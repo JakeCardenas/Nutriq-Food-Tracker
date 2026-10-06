@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/local_store.dart';
 import '../domain/models/settings.dart';
 import '../domain/models/user_profile.dart';
+import '../domain/starting_point.dart';
 
 /// Profile, goals and app settings.
 class ProfileController extends ChangeNotifier {
@@ -40,8 +41,17 @@ class ProfileController extends ChangeNotifier {
     await _store.saveSettings(settings);
   }
 
-  Future<void> setCalorieGoal(CalorieRange? range) =>
-      saveProfile((_profile ?? const UserProfile()).copyWith(calorieGoal: range));
+  /// Saves (or removes) the calorie goal. Refuses ranges the calculator would
+  /// never allow — below max(1,200, resting energy) — and any goal for minors.
+  Future<void> setCalorieGoal(CalorieRange? range) async {
+    final current = _profile ?? const UserProfile();
+    if (range != null) {
+      if (current.isMinor) throw const CalorieGoalRejected('Calorie goals aren’t offered for people under 18.');
+      final problem = CalorieBounds.validate(range, current);
+      if (problem != null) throw CalorieGoalRejected(problem);
+    }
+    await saveProfile(current.copyWith(calorieGoal: range));
+  }
 
   Future<void> setProteinTarget(int? grams) =>
       saveProfile((_profile ?? const UserProfile()).copyWith(proteinTargetG: grams));
@@ -60,4 +70,11 @@ class ProfileController extends ChangeNotifier {
     _settings = const AppSettings();
     notifyListeners();
   }
+}
+
+class CalorieGoalRejected implements Exception {
+  const CalorieGoalRejected(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }

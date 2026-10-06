@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../data/local_store.dart';
@@ -18,6 +20,11 @@ class MealLogController extends ChangeNotifier {
   final LocalStore _store;
   final int Function() _dayStartHour;
   final Future<void> Function(String photoPath) _deletePhoto;
+
+  final _saved = StreamController<Meal>.broadcast();
+
+  /// Emits each meal right after it's saved (used for the Apple Health write-once hook).
+  Stream<Meal> get mealSaved => _saved.stream;
 
   List<Meal> _meals = [];
   List<SavedFood> _savedFoods = [];
@@ -64,10 +71,16 @@ class MealLogController extends ChangeNotifier {
   ];
 
   Future<void> saveMeal(Meal meal) async {
-    _meals = [..._meals.where((m) => m.id != meal.id), meal]
-      ..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
+    _meals = [..._meals.where((m) => m.id != meal.id), meal]..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
     notifyListeners();
     await _store.upsertMeal(meal);
+    _saved.add(meal);
+  }
+
+  @override
+  void dispose() {
+    _saved.close();
+    super.dispose();
   }
 
   Future<void> deleteMeal(Meal meal) async {

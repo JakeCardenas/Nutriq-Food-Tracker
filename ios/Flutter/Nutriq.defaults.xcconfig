@@ -1,0 +1,8 @@
+// Committed defaults. Override any of these in Nutriq.xcconfig (git-ignored).
+
+// HealthKit only. Works with a free Personal Team.
+NUTRIQ_ENTITLEMENTS = Runner/Runner.entitlements
+
+// Reversed iOS OAuth client ID for Google Sign-In's URL scheme.
+// Placeholder until you create an iOS OAuth client in Google Cloud.
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.not-configured

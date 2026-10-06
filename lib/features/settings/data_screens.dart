@@ -8,7 +8,7 @@ import '../../app/format.dart';
 import '../../app/theme.dart';
 import '../../widgets/adaptive.dart';
 import '../../widgets/buttons.dart';
-import '../../widgets/meal_row.dart';
+import '../../widgets/meal_cards.dart';
 import '../../widgets/surfaces.dart';
 import '../meal_editor/feedback_prompt.dart';
 
@@ -30,8 +30,8 @@ class SavedFoodsScreen extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(NqSpace.xxxl),
                 child: Text(
-                  'Nothing saved yet. When reviewing a meal, tap a food and choose “Save to My foods” — '
-                  'or “Save foods without logging”.',
+                  'Nothing saved yet. When reviewing a meal, tap an ingredient and choose “Save to My foods”, '
+                  'or use “Save foods” at the bottom.',
                   style: NqText.callout,
                   textAlign: TextAlign.center,
                 ),
@@ -50,10 +50,10 @@ class SavedFoodsScreen extends StatelessWidget {
                       direction: DismissDirection.endToStart,
                       onDismissed: (_) => log.deleteSavedFood(f.id),
                       background: Container(
-                        color: NqColors.coral.withValues(alpha: 0.2),
+                        color: NqColors.danger.withValues(alpha: 0.2),
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(Icons.delete_outline_rounded, color: NqColors.coral),
+                        child: const Icon(Icons.delete_outline_rounded, color: NqColors.danger),
                       ),
                       child: NqRow(
                         title: f.item.name,
@@ -102,15 +102,13 @@ class ScanFeedbackScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(NqSpace.page, NqSpace.sm, NqSpace.page, NqSpace.xxxl),
             children: [
               Text(
-                'Was a scan estimate too high, about right, or too low? Your answers stay on this phone. '
-                'If you’re testing Nutriq for a friend, copy the summary and send it to them.',
+                'Was a scan estimate too high, about right, or too low? Your answers are kept with your meals '
+                '(and synced if you’re signed in). Testing Nutriq for someone? Copy the summary and send it to them.',
                 style: NqText.callout,
               ),
               const SizedBox(height: NqSpace.lg),
               if (meals.isEmpty)
-                const NqCard(
-                  child: Text('Scan a meal first — it will show up here to rate.', style: NqText.callout),
-                )
+                const NqCard(child: Text('Scan a meal first — it will show up here to rate.', style: NqText.callout))
               else
                 for (final m in meals)
                   Padding(

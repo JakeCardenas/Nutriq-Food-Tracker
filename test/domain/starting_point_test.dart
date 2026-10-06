@@ -25,14 +25,8 @@ void main() {
 
     test('goal ranges are rounded to 50 kcal', () {
       expect(_calc(_adultMale).range, const CalorieRange(min: 2650, max: 2850));
-      expect(
-        _calc(_adultMale.copyWith(goal: FitnessGoal.loseFat)).range,
-        const CalorieRange(min: 2250, max: 2500),
-      );
-      expect(
-        _calc(_adultMale.copyWith(goal: FitnessGoal.gainMuscle)).range,
-        const CalorieRange(min: 2900, max: 3100),
-      );
+      expect(_calc(_adultMale.copyWith(goal: FitnessGoal.loseFat)).range, const CalorieRange(min: 2250, max: 2500));
+      expect(_calc(_adultMale.copyWith(goal: FitnessGoal.gainMuscle)).range, const CalorieRange(min: 2900, max: 3100));
       expect(
         _calc(_adultMale.copyWith(goal: FitnessGoal.buildStrength)).range,
         const CalorieRange(min: 2750, max: 3000),
@@ -69,7 +63,7 @@ void main() {
       );
       expect(r.maintenance, 1210);
       expect(r.deficitNotSuggested, isTrue);
-      expect(r.range, const CalorieRange(min: 1100, max: 1300));
+      expect(r.range, const CalorieRange(min: 1200, max: 1300));
     });
 
     test('a goal weight implying a very low BMI raises a gentle note', () {

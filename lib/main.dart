@@ -1,91 +1,60 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'app/app_scope.dart';
+import 'app/env.dart';
 import 'app/nutriq_app.dart';
-import 'app/theme.dart';
+import 'app/session.dart';
+import 'data/cloud_repository.dart';
 import 'data/sqlite_local_store.dart';
+import 'data/supabase_cloud_repository.dart';
+import 'services/auth/auth_service.dart';
+import 'services/auth/supabase_auth_service.dart';
 import 'services/coach/demo_coach_service.dart';
 import 'services/food_analysis/demo_food_analysis_service.dart';
+import 'services/health/health_service.dart';
+import 'services/health/healthkit_service.dart';
 import 'services/photo_service.dart';
-import 'state/coach_controller.dart';
-import 'state/meal_log_controller.dart';
-import 'state/profile_controller.dart';
+import 'state/session_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
-  runApp(const _Bootstrap());
-}
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
-/// Opens local storage, then starts the app. Shows a retry screen instead of
-/// crashing if storage can't be opened.
-class _Bootstrap extends StatefulWidget {
-  const _Bootstrap();
-
-  @override
-  State<_Bootstrap> createState() => _BootstrapState();
-}
-
-class _BootstrapState extends State<_Bootstrap> {
-  late Future<AppScope Function(Widget)> _ready = _init();
-
-  Future<AppScope Function(Widget)> _init() async {
-    final store = await SqliteLocalStore.open();
-    final photos = await DevicePhotoService.create();
-    final profile = ProfileController(store);
-    final log = MealLogController(
-      store,
-      dayStartHour: () => profile.settings.dayStartHour,
-      deletePhoto: photos.delete,
-    );
-    await profile.load();
-    await log.load();
-
-    // Demo implementations. To connect real services, implement
-    // FoodAnalysisService / CoachService against your own backend and swap
-    // them in here. Never ship AI-provider keys inside the app.
-    final analysis = DemoFoodAnalysisService();
-    final coach = CoachController(DemoCoachService(), CoachController.contextFrom(profile, log));
-
-    return (child) =>
-        AppScope(profile: profile, log: log, coach: coach, analysis: analysis, photos: photos, child: child);
+  // Cloud accounts are optional: without config/nutriq.json the app runs
+  // fully on the device. Only the public URL + publishable key are used here.
+  AuthService auth = const DisabledAuthService();
+  CloudRepository? cloud;
+  if (Env.cloudConfigured) {
+    try {
+      await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
+      final client = Supabase.instance.client;
+      auth = SupabaseAuthService(client);
+      cloud = SupabaseCloudRepository(client);
+    } catch (e) {
+      debugPrint('Supabase not available, staying local-only: $e');
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _ready,
-      builder: (context, snapshot) {
-        if (snapshot.hasData) return snapshot.data!(const NutriqApp());
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: buildNutriqTheme(),
-          home: Scaffold(
-            body: Center(
-              child: snapshot.hasError
-                  ? Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text('Couldn’t open your data', style: NqText.title),
-                          const SizedBox(height: 8),
-                          Text('${snapshot.error}', style: NqText.footnote, textAlign: TextAlign.center),
-                          const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed: () => setState(() => _ready = _init()),
-                            child: const Text('Try again'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  // Demo implementations — clearly labelled in the UI. To connect real
+  // services, implement FoodAnalysisService / CoachService against your own
+  // backend (which keeps provider keys server-side) and swap them in here.
+  final services = SessionServices(
+    analysis: DemoFoodAnalysisService(),
+    coach: DemoCoachService(),
+    health: Platform.isIOS ? HealthKitService() : const UnsupportedHealthService(),
+  );
+
+  final sessions = SessionController(
+    auth: auth,
+    buildSession: (user) => openDeviceSession(user: user, cloud: user == null ? null : cloud, services: services),
+    openLocalStore: () => SqliteLocalStore.open(),
+    localPhotos: await DevicePhotoService.create(),
+  );
+  sessions.start();
+
+  runApp(NutriqApp(sessions: sessions, auth: auth));
 }

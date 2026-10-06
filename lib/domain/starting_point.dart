@@ -81,22 +81,21 @@ abstract final class StartingPoint {
       return StartingPointResult(eligibility: TargetEligibility.needsMoreInfo, missing: missing);
     }
 
-    final age = p.age!, heightCm = p.heightCm!, weightKg = p.weightKg!, activity = p.activity!;
+    final heightCm = p.heightCm!, weightKg = p.weightKg!, activity = p.activity!;
     final goal = p.goal ?? FitnessGoal.maintain;
 
-    final sexConstant = switch (p.sex) {
-      SexForEstimate.male => _maleConstant,
-      SexForEstimate.female => _femaleConstant,
-      null => _midpointConstant,
-    };
-    final bmr = 10 * weightKg + 6.25 * heightCm - 5 * age + sexConstant;
+    final sexConstant = _sexConstant(p.sex);
+    final bmr = restingEnergy(p)!;
     final maintenance = _round(bmr * activity.factor, 10);
     final uncertainty = p.sex == null ? _round(83 * activity.factor, 10) : null;
 
     final floor = math.max(_minimumIntake.toDouble(), bmr);
+    final floorKcal = CalorieBounds.floorFor(p);
     var deficitNotSuggested = false;
-    CalorieRange around(int lowOffset, int highOffset) =>
-        CalorieRange(min: _round(maintenance + lowOffset, 50), max: _round(maintenance + highOffset, 50));
+    CalorieRange around(int lowOffset, int highOffset) {
+      final low = math.max(_round(maintenance + lowOffset, 50), floorKcal);
+      return CalorieRange(min: low, max: math.max(low + 100, _round(maintenance + highOffset, 50)));
+    }
 
     final CalorieRange range;
     switch (goal) {
@@ -105,7 +104,7 @@ abstract final class StartingPoint {
           deficitNotSuggested = true;
           range = around(-100, 100);
         } else {
-          final low = math.max(_round(maintenance - 500, 50), _ceil(floor, 50));
+          final low = math.max(_round(maintenance - 500, 50), floorKcal);
           final high = math.max(low + 100, _round(maintenance - 250, 50));
           range = CalorieRange(min: low, max: high);
         }
@@ -164,6 +163,47 @@ abstract final class StartingPoint {
     );
   }
 
+  static int _sexConstant(SexForEstimate? sex) => switch (sex) {
+    SexForEstimate.male => _maleConstant,
+    SexForEstimate.female => _femaleConstant,
+    null => _midpointConstant,
+  };
+
+  /// Mifflin–St Jeor resting energy (kcal/day), or null without age, height and weight.
+  static double? restingEnergy(UserProfile? p) {
+    if (p == null || p.age == null || p.heightCm == null || p.weightKg == null) return null;
+    return 10 * p.weightKg! + 6.25 * p.heightCm! - 5 * p.age! + _sexConstant(p.sex);
+  }
+
   static int _round(num v, int step) => (v / step).round() * step;
   static int _ceil(num v, int step) => (v / step).ceil() * step;
+}
+
+/// The single source of truth for which calorie goals Nutriq will suggest or save.
+///
+/// Used by the calculator, both range editors and [ProfileController.setCalorieGoal],
+/// so the editable low end can never undercut what the calculator would allow.
+abstract final class CalorieBounds {
+  static const absoluteMinimum = 1200;
+  static const maximum = 6000;
+  static const minimumSpread = 50;
+
+  /// max(1,200, estimated resting energy), rounded up to the nearest 50 kcal.
+  static int floorFor(UserProfile? p) {
+    final bmr = StartingPoint.restingEnergy(p) ?? 0;
+    return StartingPoint._ceil(math.max(absoluteMinimum.toDouble(), bmr), 50);
+  }
+
+  /// A user-facing reason the range can't be saved, or null when it's fine.
+  static String? validate(CalorieRange range, UserProfile? p) {
+    final floor = floorFor(p);
+    if (range.min < floor) {
+      return 'The low end can’t go below $floor kcal — the higher of 1,200 and your estimated resting energy.';
+    }
+    if (range.max - range.min < minimumSpread * 2) {
+      return 'Leave at least 100 kcal between the low and high end.';
+    }
+    if (range.max > maximum) return 'The high end can’t go above $maximum kcal.';
+    return null;
+  }
 }

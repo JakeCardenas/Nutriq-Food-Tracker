@@ -1,112 +1,151 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nutriq/app/nutriq_app.dart';
 import 'package:nutriq/domain/models/food_item.dart';
 import 'package:nutriq/domain/models/meal.dart';
 import 'package:nutriq/domain/models/settings.dart';
+import 'package:nutriq/domain/models/user_profile.dart';
+import 'package:nutriq/domain/starting_point.dart';
 
 import '../support/test_app.dart';
 
-Future<TestDeps> _launch(WidgetTester tester, {bool firstLaunch = true, List<Meal>? meals}) async {
-  await tester.binding.setSurfaceSize(const Size(430, 932));
+Future<TestDeps> _launch(
+  WidgetTester tester, {
+  bool firstLaunch = true,
+  List<Meal>? meals,
+  UserProfile? profile,
+}) async {
   final deps = await TestDeps.create(
     settings: AppSettings(onboardingComplete: !firstLaunch),
     meals: meals,
+    profile: profile,
   );
-  await tester.pumpWidget(deps.wrap(const NutriqApp()));
-  await tester.pumpAndSettle();
+  await deps.pumpApp(tester);
   return deps;
 }
 
 Future<void> _tapText(WidgetTester tester, String text) async {
-  if (find.text(text).evaluate().isEmpty) {
-    await tester.scrollUntilVisible(find.text(text), 200, scrollable: find.byType(Scrollable).first);
+  final finder = find.text(text);
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, 200, scrollable: find.byType(Scrollable).first);
   }
-  await tester.ensureVisible(find.text(text).first);
+  await tester.ensureVisible(finder.first);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(text).first);
+  await tester.tap(finder.first);
   await tester.pumpAndSettle();
 }
 
-Future<void> _enter(WidgetTester tester, String label, String value) async {
-  final field = find.widgetWithText(TextFormField, label);
-  await tester.ensureVisible(field);
-  await tester.pumpAndSettle();
-  await tester.enterText(field, value);
+/// Waits out the "Setting up your starting point" animation.
+Future<void> _passBuilding(WidgetTester tester) async {
+  await tester.pump(const Duration(seconds: 3));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('first launch shows onboarding; skipping lands on Today without a goal', (tester) async {
+  testWidgets('first launch shows the welcome; skipping lands on Today without a goal', (tester) async {
     final deps = await _launch(tester);
-    expect(find.text('Set up my starting point'), findsOneWidget);
+    expect(find.text('Get started'), findsOneWidget);
+    expect(find.text('Example'), findsOneWidget, reason: 'the preview is labeled as an example');
 
-    await _tapText(tester, 'Skip — just start logging');
-    expect(find.text('Scan meal'), findsOneWidget);
+    await _tapText(tester, 'Skip setup — just start logging');
     expect(find.text('No calorie goal set'), findsOneWidget);
+    expect(find.text('Set a calorie goal'), findsOneWidget);
+    expect(find.text('No meals logged yet'), findsOneWidget);
     expect(deps.profile.settings.onboardingComplete, isTrue);
+    expect(deps.profile.profile, isNull);
   });
 
-  testWidgets('full onboarding produces an editable starting point', (tester) async {
+  testWidgets('full onboarding builds an editable plan from the answers', (tester) async {
     final deps = await _launch(tester);
-    await _tapText(tester, 'Set up my starting point');
-
+    await _tapText(tester, 'Get started');
     await _tapText(tester, 'Build strength');
     await _tapText(tester, 'Continue');
-
-    await _enter(tester, 'Age', '30');
     await _tapText(tester, 'Male');
-    await _enter(tester, 'Height (cm)', '180');
-    await _enter(tester, 'Weight (kg)', '80');
     await _tapText(tester, 'Continue');
-
+    await _tapText(tester, 'Continue'); // age wheel default (30)
+    await _tapText(tester, 'Continue'); // height & weight defaults (170 cm, 70 kg)
+    await _tapText(tester, 'Skip'); // goal weight
     await _tapText(tester, 'Moderately active');
     await _tapText(tester, 'Continue');
-
+    await _tapText(tester, 'Continue'); // workouts
     await _tapText(tester, 'None of these');
     await _tapText(tester, 'Continue');
+    await _passBuilding(tester);
 
-    expect(find.text('Your starting point'), findsOneWidget);
-    expect(find.textContaining('2,760'), findsWidgets);
-    expect(find.textContaining('not medical advice'), findsOneWidget);
+    expect(find.text('Your starting point is ready'), findsOneWidget);
+    final expected = StartingPoint.calculate(
+      const UserProfile(
+        age: 30,
+        sex: SexForEstimate.male,
+        heightCm: 170,
+        weightKg: 70,
+        activity: ActivityLevel.moderate,
+        goal: FitnessGoal.buildStrength,
+        workoutDaysPerWeek: 3,
+      ),
+    );
+    await _tapText(tester, 'Use this plan');
 
-    await _tapText(tester, 'Use this range');
-    expect(find.text('Scan meal'), findsOneWidget);
-    expect(deps.profile.profile!.calorieGoal!.min, 2750);
-    expect(deps.profile.profile!.proteinTargetG, 130);
-    expect(find.textContaining('to your range'), findsOneWidget);
+    final saved = deps.profile.profile!;
+    expect(saved.calorieGoal, expected.range);
+    expect(saved.proteinTargetG, expected.proteinReferenceG);
+    expect(saved.calorieGoal!.min, greaterThanOrEqualTo(CalorieBounds.floorFor(saved)));
+    expect(find.text('Calories eaten · est.'), findsOneWidget);
   });
 
-  testWidgets('under-18 users get no calorie targets', (tester) async {
+  testWidgets('under-18s get no calorie targets', (tester) async {
     final deps = await _launch(tester);
-    await _tapText(tester, 'Set up my starting point');
+    await _tapText(tester, 'Get started');
     await _tapText(tester, 'Lose body fat');
     await _tapText(tester, 'Continue');
-    await _enter(tester, 'Age', '16');
-    await _enter(tester, 'Height (cm)', '165');
-    await _enter(tester, 'Weight (kg)', '60');
+    await _tapText(tester, 'Female');
     await _tapText(tester, 'Continue');
+    // Age wheel: 30 → 16 (14 rows of 42 pt).
+    await tester.drag(find.byType(CupertinoPicker), const Offset(0, 14 * 42.0));
+    await tester.pumpAndSettle();
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Skip');
     await _tapText(tester, 'Lightly active');
     await _tapText(tester, 'Continue');
     await _tapText(tester, 'Continue');
+    await _tapText(tester, 'None of these');
+    await _tapText(tester, 'Continue');
+    await _passBuilding(tester);
 
     expect(find.textContaining('under 18'), findsWidgets);
-    expect(find.text('Use this range'), findsNothing);
-    await _tapText(tester, 'Start logging');
+    expect(find.text('Use this plan'), findsNothing);
+    await _tapText(tester, 'Continue');
+    expect(deps.profile.profile!.age, 16);
+    expect(deps.profile.profile!.calorieGoal, isNull);
+    expect(deps.profile.profile!.proteinTargetG, isNull);
+    expect(find.text('Set a calorie goal'), findsNothing);
+  });
+
+  testWidgets('a pregnancy answer skips calculated targets', (tester) async {
+    final deps = await _launch(tester);
+    await _tapText(tester, 'Get started');
+    await _tapText(tester, 'Maintain');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Female');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Skip');
+    await _tapText(tester, 'Lightly active');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Continue');
+    await _tapText(tester, 'Pregnant');
+    await _tapText(tester, 'Continue');
+    await _passBuilding(tester);
+
+    expect(find.text('Use this plan'), findsNothing);
+    await _tapText(tester, 'Continue');
+    expect(deps.profile.profile!.health, contains(HealthConsideration.pregnant));
     expect(deps.profile.profile!.calorieGoal, isNull);
   });
 
-  testWidgets('invalid age blocks continue with a clear message', (tester) async {
-    await _launch(tester);
-    await _tapText(tester, 'Set up my starting point');
-    await _tapText(tester, 'Continue');
-    await _enter(tester, 'Age', '7');
-    await _tapText(tester, 'Continue');
-    expect(find.textContaining('13'), findsWidgets);
-    expect(find.text('About you'), findsOneWidget);
-  });
-
-  testWidgets('Today shows logged meals and the coach tab is labeled demo', (tester) async {
+  testWidgets('Today shows logged meals; the coach is labeled demo', (tester) async {
     final now = DateTime.now();
     await _launch(
       tester,
@@ -117,29 +156,52 @@ void main() {
           loggedAt: DateTime(now.year, now.month, now.day, now.hour, now.minute),
           type: MealType.lunch,
           source: MealSource.manual,
-          items: const [
-            FoodItem(id: 'f', name: 'Lentil soup', caloriesPerServing: 640, proteinPerServing: 30),
-          ],
+          items: const [FoodItem(id: 'f', name: 'Lentil soup', caloriesPerServing: 640, proteinPerServing: 30)],
         ),
       ],
     );
     expect(find.text('Lentil soup'), findsOneWidget);
-    expect(find.text('640'), findsWidgets);
+    expect(find.text('640 kcal'), findsOneWidget);
+    expect(find.text('1'), findsWidgets, reason: 'one-day streak');
 
     await tester.tap(find.text('Coach').last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Demo coach'), findsWidgets);
+    expect(find.text('Demo coach'), findsOneWidget);
     expect(find.text('How am I doing with my protein today?'), findsOneWidget);
   });
 
-  testWidgets('Delete everything returns to onboarding', (tester) async {
+  testWidgets('the calorie editor never goes below the safe floor', (tester) async {
+    const profile = UserProfile(
+      age: 30,
+      sex: SexForEstimate.male,
+      heightCm: 180,
+      weightKg: 80,
+      activity: ActivityLevel.moderate,
+      calorieGoal: CalorieRange(min: 1800, max: 2100),
+    );
+    final floor = CalorieBounds.floorFor(profile);
+    expect(floor, 1800);
+    await _launch(tester, firstLaunch: false, profile: profile);
+    await tester.tap(find.text('Settings').last);
+    await tester.pumpAndSettle();
+    await _tapText(tester, 'Calorie goal');
+    expect(find.text('1,800 – 2,100 kcal/day'), findsOneWidget);
+
+    // The low end's minus button is disabled at the floor.
+    await tester.tap(find.byIcon(Icons.remove_rounded).first);
+    await tester.pumpAndSettle();
+    expect(find.text('1,800 – 2,100 kcal/day'), findsOneWidget);
+  });
+
+  testWidgets('deleting all data on this phone returns to the welcome screen', (tester) async {
     final deps = await _launch(tester, firstLaunch: false);
     await tester.tap(find.text('Settings').last);
     await tester.pumpAndSettle();
-    await _tapText(tester, 'Delete all data');
+    await _tapText(tester, 'Delete all data on this phone');
     await tester.tap(find.text('Delete everything').last);
     await tester.pumpAndSettle();
-    expect(find.text('Set up my starting point'), findsOneWidget);
+    expect(find.text('Get started'), findsOneWidget);
     expect(deps.profile.settings.onboardingComplete, isFalse);
+    expect(deps.photos.deletedAll, isTrue);
   });
 }

@@ -10,11 +10,7 @@ class SavedFood {
   final FoodItem item;
   final DateTime savedAt;
 
-  Map<String, Object?> toJson() => {
-    'id': id,
-    'item': item.toJson(),
-    'savedAt': savedAt.millisecondsSinceEpoch,
-  };
+  Map<String, Object?> toJson() => {'id': id, 'item': item.toJson(), 'savedAt': savedAt.millisecondsSinceEpoch};
 
   factory SavedFood.fromJson(Map<String, Object?> j) => SavedFood(
     id: j['id'] as String,

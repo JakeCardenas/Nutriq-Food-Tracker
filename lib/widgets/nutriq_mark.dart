@@ -2,27 +2,39 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../app/theme.dart';
+/// Nutriq's brand colours (app icon and mark). Kept separate from the UI
+/// theme so the identity never changes with a redesign.
+abstract final class NutriqBrand {
+  static const sage = Color(0xFF8BD8A0);
+  static const graphite = Color(0xFF0F1012);
+  static const amber = Color(0xFFF0B357);
+}
 
 /// The Nutriq mark: an open gauge ring with a descender, forming a "q".
 /// Also used to render the app icon (see tool/generate_icon_test.dart).
 class NutriqMark extends StatelessWidget {
-  const NutriqMark({super.key, this.size = 72, this.withBackground = false});
+  const NutriqMark({super.key, this.size = 72, this.withBackground = false, this.color = NutriqBrand.sage});
 
   final double size;
   final bool withBackground;
 
+  /// Ring colour: brand sage (icon, welcome) or ink for the in-app header.
+  final Color color;
+
   @override
   Widget build(BuildContext context) => SizedBox.square(
     dimension: size,
-    child: CustomPaint(painter: NutriqMarkPainter(withBackground: withBackground)),
+    child: CustomPaint(
+      painter: NutriqMarkPainter(withBackground: withBackground, color: color),
+    ),
   );
 }
 
 class NutriqMarkPainter extends CustomPainter {
-  const NutriqMarkPainter({this.withBackground = false});
+  const NutriqMarkPainter({this.withBackground = false, this.color = NutriqBrand.sage});
 
   final bool withBackground;
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -35,7 +47,7 @@ class NutriqMarkPainter extends CustomPainter {
           ..shader = const RadialGradient(
             center: Alignment(-0.2, -0.3),
             radius: 1.1,
-            colors: [Color(0xFF202226), NqColors.background],
+            colors: [Color(0xFF202226), NutriqBrand.graphite],
           ).createShader(rect),
       );
     }
@@ -50,7 +62,7 @@ class NutriqMarkPainter extends CustomPainter {
     final center = Offset(s * 0.44, s * 0.42);
     final radius = s * 0.27;
     final ring = Paint()
-      ..color = NqColors.sage
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round;
@@ -70,11 +82,11 @@ class NutriqMarkPainter extends CustomPainter {
     canvas.drawCircle(
       center + Offset(math.cos(dotAngle), math.sin(dotAngle)) * radius,
       stroke * 0.36,
-      Paint()..color = NqColors.amber,
+      Paint()..color = NutriqBrand.amber,
     );
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(NutriqMarkPainter old) => old.withBackground != withBackground;
+  bool shouldRepaint(NutriqMarkPainter old) => old.withBackground != withBackground || old.color != color;
 }

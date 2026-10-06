@@ -26,12 +26,35 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.prodbyjake.nutriq.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.prodbyjake.nutriq</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.prodbyjake.nutriq.google</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>If you connect Apple Health, Nutriq reads your steps, workouts, active energy and weight to show them next to your meals. This data stays on your iPhone.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>If you turn it on, Nutriq adds the calories, protein, carbs and fat of meals you log to Apple Health.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Nutriq uses the camera so you can photograph a meal and log it. Your photo stays on this device.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Nutriq lets you pick a meal photo from your library to log it. Your photo stays on this device.</string>
 	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
+	<string>Light</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

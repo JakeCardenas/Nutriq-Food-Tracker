@@ -33,11 +33,7 @@ void main() {
       store = MemoryLocalStore();
       deletedPhotos = [];
       dayStart = 4;
-      log = MealLogController(
-        store,
-        dayStartHour: () => dayStart,
-        deletePhoto: (p) async => deletedPhotos.add(p),
-      );
+      log = MealLogController(store, dayStartHour: () => dayStart, deletePhoto: (p) async => deletedPhotos.add(p));
       await log.load();
     });
 
@@ -133,6 +129,42 @@ void main() {
       await c.resetAll();
       expect(c.profile, isNull);
       expect(c.settings, const AppSettings());
+    });
+  });
+
+  group('ProfileController calorie goal (regression: floor must hold when saving)', () {
+    const adult = UserProfile(
+      age: 30,
+      sex: SexForEstimate.male,
+      heightCm: 180,
+      weightKg: 80,
+      activity: ActivityLevel.moderate,
+    );
+
+    test('a range below max(1,200, resting energy) is refused and nothing changes', () async {
+      final c = ProfileController(MemoryLocalStore(profile: adult));
+      await c.load();
+      await expectLater(
+        c.setCalorieGoal(const CalorieRange(min: 1500, max: 2000)),
+        throwsA(isA<CalorieGoalRejected>()),
+      );
+      expect(c.profile!.calorieGoal, isNull);
+    });
+
+    test('a range at or above the floor is saved', () async {
+      final c = ProfileController(MemoryLocalStore(profile: adult));
+      await c.load();
+      await c.setCalorieGoal(const CalorieRange(min: 1800, max: 2200));
+      expect(c.profile!.calorieGoal!.min, 1800);
+    });
+
+    test('minors cannot save a calorie goal at all', () async {
+      final c = ProfileController(MemoryLocalStore(profile: const UserProfile(age: 16)));
+      await c.load();
+      await expectLater(
+        c.setCalorieGoal(const CalorieRange(min: 2000, max: 2200)),
+        throwsA(isA<CalorieGoalRejected>()),
+      );
     });
   });
 

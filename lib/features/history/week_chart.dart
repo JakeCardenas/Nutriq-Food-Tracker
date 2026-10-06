@@ -8,27 +8,22 @@ import '../../app/theme.dart';
 import '../../domain/models/user_profile.dart';
 import '../../services/coach/coach_service.dart' show DaySummary;
 
-/// Seven daily calorie bars against the goal band. Tap a bar to open that day.
+/// Seven daily calorie bars, each split by where the energy came from
+/// (protein, carbs, fat), drawn against the goal range. Tap a bar to open that day.
 class WeekChart extends StatelessWidget {
-  const WeekChart({
-    super.key,
-    required this.days,
-    required this.range,
-    required this.selected,
-    required this.onSelect,
-  });
+  const WeekChart({super.key, required this.days, required this.range, required this.selected, required this.onSelect});
 
   final List<DaySummary> days;
   final CalorieRange? range;
   final DateTime selected;
   final ValueChanged<DateTime> onSelect;
 
-  static const _chartHeight = 140.0;
+  static const _chartHeight = 150.0;
 
   @override
   Widget build(BuildContext context) {
     final maxKcal = days.map((d) => d.totals.calories).fold<double>(0, math.max);
-    final scaleMax = math.max(1500.0, math.max(maxKcal, (range?.max ?? 0).toDouble()) * 1.15);
+    final scaleMax = math.max(1500.0, math.max(maxKcal, (range?.max ?? 0).toDouble()) * 1.12);
     double h(num kcal) => _chartHeight * (kcal / scaleMax).clamp(0.0, 1.0);
 
     return Column(
@@ -37,21 +32,7 @@ class WeekChart extends StatelessWidget {
           height: _chartHeight,
           child: Stack(
             children: [
-              if (range != null)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: h(range!.min),
-                  height: math.max(2, h(range!.max) - h(range!.min)),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: NqColors.sage.withValues(alpha: 0.10),
-                      border: Border.symmetric(
-                        horizontal: BorderSide(color: NqColors.sage.withValues(alpha: 0.35), width: 0.6),
-                      ),
-                    ),
-                  ),
-                ),
+              if (range != null) ...[_GoalLine(bottom: h(range!.max)), _GoalLine(bottom: h(range!.min))],
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -72,14 +53,12 @@ class WeekChart extends StatelessWidget {
                           },
                           child: Align(
                             alignment: Alignment.bottomCenter,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeOutCubic,
-                              width: 20,
-                              height: d.mealCount == 0 ? 3 : math.max(6, h(d.totals.calories)),
-                              decoration: BoxDecoration(
-                                color: _barColor(d),
-                                borderRadius: BorderRadius.circular(6),
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 200),
+                              opacity: d.day == selected || d.mealCount == 0 ? 1 : 0.55,
+                              child: _StackedBar(
+                                summary: d,
+                                height: d.mealCount == 0 ? 4 : math.max(8, h(d.totals.calories)),
                               ),
                             ),
                           ),
@@ -101,7 +80,7 @@ class WeekChart extends StatelessWidget {
                   onTap: () => onSelect(d.day),
                   child: Column(
                     children: [
-                      Text(weekdayInitial(d.day), style: NqText.caption),
+                      Text(weekdayShort(d.day), style: NqText.caption),
                       const SizedBox(height: 4),
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
@@ -109,14 +88,14 @@ class WeekChart extends StatelessWidget {
                         height: 30,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: d.day == selected ? NqColors.textPrimary : Colors.transparent,
+                          color: d.day == selected ? NqColors.inkSoft : Colors.transparent,
                           shape: BoxShape.circle,
                         ),
                         child: Text(
                           '${d.day.day}',
                           style: NqText.numberSmall.copyWith(
                             fontSize: 14,
-                            color: d.day == selected ? NqColors.background : NqColors.textSecondary,
+                            color: d.day == selected ? NqColors.onInk : NqColors.textSecondary,
                           ),
                         ),
                       ),
@@ -129,14 +108,79 @@ class WeekChart extends StatelessWidget {
       ],
     );
   }
+}
 
-  Color _barColor(DaySummary d) {
-    final selectedDay = d.day == selected;
-    if (d.mealCount == 0) return NqColors.raisedHigh;
-    final r = range;
-    final base = r != null && d.totals.calories > r.max
-        ? NqColors.amber
-        : (r == null ? NqColors.textSecondary : NqColors.sage);
-    return selectedDay ? base : base.withValues(alpha: 0.45);
+class _GoalLine extends StatelessWidget {
+  const _GoalLine({required this.bottom});
+  final double bottom;
+
+  @override
+  Widget build(BuildContext context) => Positioned(
+    left: 0,
+    right: 0,
+    bottom: bottom,
+    child: const IgnorePointer(
+      child: CustomPaint(size: Size(double.infinity, 1), painter: _DashPainter()),
+    ),
+  );
+}
+
+class _DashPainter extends CustomPainter {
+  const _DashPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = NqColors.textTertiary
+      ..strokeWidth = 1;
+    for (double x = 0; x < size.width; x += 7) {
+      canvas.drawLine(Offset(x, 0), Offset(math.min(x + 3.5, size.width), 0), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashPainter oldDelegate) => false;
+}
+
+class _StackedBar extends StatelessWidget {
+  const _StackedBar({required this.summary, required this.height});
+  final DaySummary summary;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = summary.totals;
+    final p = t.protein * 4;
+    final c = t.carbs * 4;
+    final f = t.fat * 9;
+    final sum = p + c + f;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+      width: 22,
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: NqColors.track, borderRadius: BorderRadius.circular(7)),
+      child: summary.mealCount == 0 || sum <= 0
+          ? (summary.mealCount == 0 ? null : const ColoredBox(color: NqColors.inkSoft))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Top to bottom: fat, carbs, protein.
+                Expanded(
+                  flex: math.max(1, (f / sum * 100).round()),
+                  child: const ColoredBox(color: NqColors.fat),
+                ),
+                Expanded(
+                  flex: math.max(1, (c / sum * 100).round()),
+                  child: const ColoredBox(color: NqColors.carbs),
+                ),
+                Expanded(
+                  flex: math.max(1, (p / sum * 100).round()),
+                  child: const ColoredBox(color: NqColors.protein),
+                ),
+              ],
+            ),
+    );
   }
 }

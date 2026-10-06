@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
-import '../../app/theme.dart';
 import '../../domain/ids.dart';
 import '../../domain/models/meal.dart';
 import '../../domain/models/scan_feedback.dart';
 import '../../widgets/adaptive.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/controls.dart';
-import 'food_item_form.dart';
+import '../../widgets/sheet.dart';
 
 /// "How did this estimate look?" — too high / about right / too low + note.
 /// Stored on the device only; testers can copy it from Settings.
@@ -58,38 +57,19 @@ class FeedbackPrompt extends StatelessWidget {
         note: note,
       ),
     );
-    if (context.mounted) showToast(context, 'Thanks — saved on this device.');
+    if (context.mounted) showToast(context, 'Thanks — your rating was saved.');
   }
 
   Future<void> _editNote(BuildContext context, ScanFeedback current) async {
-    final controller = TextEditingController(text: current.note ?? '');
-    final note = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => SheetBody(
-        title: 'Add a note',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              controller: controller,
-              autofocus: true,
-              maxLines: 4,
-              maxLength: 300,
-              decoration: const InputDecoration(hintText: 'e.g. “Rice portion was smaller”'),
-            ),
-            const SizedBox(height: NqSpace.md),
-            PrimaryButton(
-              label: 'Save note',
-              height: 52,
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-            ),
-          ],
-        ),
-      ),
+    final note = await showTextEntrySheet(
+      context,
+      title: 'Add a note',
+      initial: current.note ?? '',
+      hint: 'e.g. “Rice portion was smaller”',
+      maxLength: 300,
+      maxLines: 4,
+      buttonLabel: 'Save note',
     );
-    controller.dispose();
     if (note == null || !context.mounted) return;
     await _save(context, current.rating, note.isEmpty ? null : note);
   }

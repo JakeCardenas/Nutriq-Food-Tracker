@@ -64,6 +64,5 @@ class ScanFeedback {
       other.note == note;
 
   @override
-  int get hashCode =>
-      Object.hash(id, mealId, mealSummary, estimatedCalories, rating, wasDemo, createdAt, note);
+  int get hashCode => Object.hash(id, mealId, mealSummary, estimatedCalories, rating, wasDemo, createdAt, note);
 }

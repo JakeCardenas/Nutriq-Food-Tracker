@@ -34,8 +34,7 @@ class DemoCoachService implements CoachService {
     final m = message.toLowerCase();
     CoachReply answer(String text) => CoachReply(text: text, kind: CoachReplyKind.answer, isDemo: true);
 
-    if (RegExp(r'dinner|lunch|breakfast|meal idea|what (should|can) i eat|suggest|recipe|snack')
-        .hasMatch(m)) {
+    if (RegExp(r'dinner|lunch|breakfast|meal idea|what (should|can) i eat|suggest|recipe|snack').hasMatch(m)) {
       return answer(_mealIdea(context));
     }
     if (m.contains('protein')) return answer(_protein(context));
@@ -44,8 +43,7 @@ class DemoCoachService implements CoachService {
       return answer(_strength(context));
     }
     if (RegExp(r'calorie|kcal|left|remaining').hasMatch(m)) return answer(_calories(context));
-    if (RegExp(r"^(hi|hello|hey|yo|good (morning|afternoon|evening))\b|^help\b|what can you do")
-        .hasMatch(m.trim())) {
+    if (RegExp(r"^(hi|hello|hey|yo|good (morning|afternoon|evening))\b|^help\b|what can you do").hasMatch(m.trim())) {
       return answer(
         'Hi! I’m Nutriq’s demo coach. I look at what you’ve logged and can help with protein, '
         'meal ideas, your week, and staying consistent. Try one of the suggestions below.',

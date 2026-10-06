@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/format.dart';
 import '../../app/theme.dart';
+import '../../domain/streak.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/labels.dart';
-import '../../widgets/meal_row.dart';
+import '../../widgets/meal_cards.dart';
 import '../../widgets/surfaces.dart';
-import '../today/today_screen.dart';
+import '../scan/meal_flows.dart';
+import '../shell/home_shell.dart';
 import 'week_chart.dart';
 
-/// Browse saved meals by day; drill into any meal to edit, move or delete it.
+/// Streak, weekly average, a week of calories split by macro, and any day's meals.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -60,60 +62,124 @@ class _HistoryScreenState extends State<HistoryScreen> {
         final days = log.summariesEnding(end);
         final profile = scope.profile.profile;
         final range = (profile?.isMinor ?? false) ? null : profile?.calorieGoal;
-        final meals = log.mealsForDay(selected);
+        final meals = log.mealsForDay(selected).reversed.toList();
         final totals = log.totalsForDay(selected);
         final logged = days.where((d) => d.mealCount > 0).toList();
         final avg = logged.isEmpty
             ? null
             : logged.map((d) => d.totals.calories).reduce((a, b) => a + b) / logged.length;
+        final loggedDays = log.meals.map(log.dayOf).toSet();
+        final streak = loggingStreak(loggedDays, today);
+        final lastSeven = log.summariesEnding(today);
         final padding = MediaQuery.paddingOf(context);
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(
-            NqSpace.page,
-            padding.top + NqSpace.md,
-            NqSpace.page,
-            padding.bottom + 32,
-          ),
+          padding: EdgeInsets.fromLTRB(NqSpace.page, padding.top + 8, NqSpace.page, HomeShell.bottomInset(context)),
           children: [
             Row(
               children: [
                 const Expanded(child: Text('History', style: NqText.largeTitle)),
                 IconButton(
                   tooltip: 'Jump to date',
-                  icon: const Icon(Icons.calendar_today_outlined, color: NqColors.textSecondary),
+                  icon: const Icon(Icons.calendar_today_outlined, color: NqColors.ink),
                   onPressed: () => _jump(today),
                 ),
               ],
             ),
             const SizedBox(height: NqSpace.md),
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: NqCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.local_fire_department_rounded,
+                            size: 34,
+                            color: streak > 0 ? NqColors.flame : NqColors.textTertiary,
+                          ),
+                          const SizedBox(height: 6),
+                          Text('$streak', style: NqText.heroNumber.copyWith(fontSize: 34)),
+                          Text('day streak', style: NqText.footnote),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              for (final d in lastSeven)
+                                Column(
+                                  children: [
+                                    Text(weekdayInitial(d.day), style: NqText.caption.copyWith(fontSize: 10)),
+                                    const SizedBox(height: 3),
+                                    Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: d.mealCount > 0 ? NqColors.flame : NqColors.track,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: NqCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.insights_rounded, size: 30, color: NqColors.ink),
+                          const SizedBox(height: 8),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              avg == null ? '—' : fmtKcal(avg),
+                              style: NqText.heroNumber.copyWith(fontSize: 34),
+                            ),
+                          ),
+                          Text('avg kcal · est.', style: NqText.footnote),
+                          const Spacer(),
+                          Text(
+                            logged.isEmpty
+                                ? 'Nothing logged this week'
+                                : 'Across ${logged.length} logged ${logged.length == 1 ? 'day' : 'days'} this week',
+                            style: NqText.caption,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: NqSpace.md),
             NqCard(
-              padding: const EdgeInsets.fromLTRB(8, 12, 8, 16),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
               child: Column(
                 children: [
                   Row(
                     children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Calories', style: NqText.headline),
+                            Text('${shortDate(days.first.day)} – ${shortDate(days.last.day)}', style: NqText.footnote),
+                          ],
+                        ),
+                      ),
                       IconButton(
                         tooltip: 'Previous week',
                         icon: const Icon(Icons.chevron_left_rounded),
                         onPressed: () => _shiftWeek(-1, today),
-                      ),
-                      Expanded(
-                        child: Column(
-                          children: [
-                            Text(
-                              '${shortDate(days.first.day)} – ${shortDate(days.last.day)}',
-                              style: NqText.headline,
-                            ),
-                            Text(
-                              avg == null
-                                  ? 'Nothing logged this week'
-                                  : 'Avg ≈ ${fmtKcal(avg)} kcal on ${logged.length} logged '
-                                        '${logged.length == 1 ? 'day' : 'days'}',
-                              style: NqText.footnote,
-                            ),
-                          ],
-                        ),
                       ),
                       IconButton(
                         tooltip: 'Next week',
@@ -123,40 +189,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                   const SizedBox(height: NqSpace.md),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: WeekChart(
-                      days: days,
-                      range: range,
-                      selected: selected,
-                      onSelect: (d) => setState(() => _selected = d),
-                    ),
+                  WeekChart(
+                    days: days,
+                    range: range,
+                    selected: selected,
+                    onSelect: (d) => setState(() => _selected = d),
                   ),
-                  if (range != null) ...[
-                    const SizedBox(height: NqSpace.md),
-                    LegendDot(
-                      color: NqColors.sage.withValues(alpha: 0.5),
-                      label: 'Shaded band = your goal range',
-                    ),
-                  ],
+                  const SizedBox(height: NqSpace.md),
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 6,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      const LegendDot(color: NqColors.protein, label: 'Protein'),
+                      const LegendDot(color: NqColors.carbs, label: 'Carbs'),
+                      const LegendDot(color: NqColors.fat, label: 'Fats'),
+                      if (range != null) const LegendDot(color: NqColors.textTertiary, label: 'Goal range (dashed)'),
+                    ],
+                  ),
                 ],
               ),
             ),
             SectionHeader(
               dayLabel(selected, today),
-              trailing: meals.isEmpty
-                  ? null
-                  : Text('≈ ${fmtKcal(totals.calories)} kcal', style: NqText.numberSmall),
+              trailing: meals.isEmpty ? null : Text('≈ ${fmtKcal(totals.calories)} kcal', style: NqText.numberSmall),
             ),
             if (meals.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: NqSpace.sm),
+                padding: const EdgeInsets.only(left: 2, bottom: NqSpace.md),
                 child: Wrap(
                   spacing: 14,
                   children: [
-                    LegendDot(color: NqColors.protein, label: 'P ${fmtGrams(totals.protein)}'),
-                    LegendDot(color: NqColors.carbs, label: 'C ${fmtGrams(totals.carbs)}'),
-                    LegendDot(color: NqColors.fat, label: 'F ${fmtGrams(totals.fat)}'),
+                    MacroValue(macro: Macro.protein, text: 'Protein ${fmtGrams(totals.protein)}'),
+                    MacroValue(macro: Macro.carbs, text: 'Carbs ${fmtGrams(totals.carbs)}'),
+                    MacroValue(macro: Macro.fat, text: 'Fats ${fmtGrams(totals.fat)}'),
                   ],
                 ),
               ),
@@ -171,30 +237,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     SecondaryButton(
                       label: 'Add a meal to this day',
                       icon: Icons.add_rounded,
-                      height: 48,
-                      onPressed: () => TodayScreen.openManual(
+                      height: 46,
+                      onPressed: () => MealFlows.openManual(
                         context,
-                        at: selected == today
-                            ? null
-                            : DateTime(selected.year, selected.month, selected.day, 12),
+                        at: selected == today ? null : DateTime(selected.year, selected.month, selected.day, 12),
                       ),
                     ),
                   ],
                 ),
               )
             else
-              NqGroup(
-                children: [
-                  for (final m in meals) MealRow(meal: m, onTap: () => TodayScreen.openMeal(context, m)),
-                ],
-              ),
+              for (final m in meals)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: MealCard(meal: m, onTap: () => MealFlows.openMeal(context, m)),
+                ),
             if (log.dayStartHour > 0)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, NqSpace.md, 16, 0),
-                child: Text(
-                  'Days start at ${log.dayStartHour} AM (Settings → Day starts at).',
-                  style: NqText.caption,
-                ),
+                padding: const EdgeInsets.fromLTRB(4, NqSpace.md, 4, 0),
+                child: Text('Days start at ${log.dayStartHour} AM (Settings → Day starts at).', style: NqText.caption),
               ),
           ],
         );

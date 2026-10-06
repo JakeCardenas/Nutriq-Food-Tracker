@@ -40,14 +40,8 @@ class CoachController extends ChangeNotifier {
     _isReplying = true;
     notifyListeners();
     try {
-      final reply = await service.reply(
-        message: message,
-        context: _context(),
-        history: List.unmodifiable(_messages),
-      );
-      _messages.add(
-        ChatMessage(role: ChatRole.coach, text: reply.text, isDemo: reply.isDemo, kind: reply.kind),
-      );
+      final reply = await service.reply(message: message, context: _context(), history: List.unmodifiable(_messages));
+      _messages.add(ChatMessage(role: ChatRole.coach, text: reply.text, isDemo: reply.isDemo, kind: reply.kind));
     } catch (_) {
       _messages.add(
         ChatMessage(

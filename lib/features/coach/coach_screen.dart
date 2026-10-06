@@ -5,6 +5,7 @@ import '../../app/theme.dart';
 import '../../services/coach/coach_service.dart';
 import '../../widgets/labels.dart';
 import '../../widgets/pressable.dart';
+import '../shell/home_shell.dart';
 
 /// Chat with the coach. Messages live in memory only.
 class CoachScreen extends StatefulWidget {
@@ -62,75 +63,69 @@ class _CoachScreenState extends State<CoachScreen> {
           }
         }
         final messages = coach.messages;
-        final bottomInset = MediaQuery.paddingOf(context).bottom;
-        return Scaffold(
-          appBar: AppBar(
-            centerTitle: false,
-            title: Row(
-              children: [
-                const Text('Coach', style: NqText.title),
-                if (coach.service.isDemo) ...[const SizedBox(width: 8), const DemoBadge(label: 'Demo coach')],
-              ],
-            ),
-            actions: [
-              if (messages.isNotEmpty)
-                IconButton(
-                  tooltip: 'Clear conversation',
-                  icon: const Icon(Icons.refresh_rounded, color: NqColors.textSecondary),
-                  onPressed: coach.clear,
-                ),
-            ],
-          ),
-          body: Column(
-            children: [
-              if (coach.service.isDemo)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(NqSpace.page, 0, NqSpace.page, NqSpace.sm),
-                  child: Text(
-                    'Demo coach: scripted replies that use your log — not live AI, and not medical advice. '
-                    'Chats aren’t saved.',
-                    style: NqText.caption,
-                  ),
-                ),
-              Expanded(
-                child: messages.isEmpty
-                    ? _EmptyCoach(onPrompt: _send)
-                    : ListView.builder(
-                        controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(
-                          NqSpace.page,
-                          NqSpace.sm,
-                          NqSpace.page,
-                          NqSpace.lg,
-                        ),
-                        itemCount: messages.length + (coach.isReplying ? 1 : 0),
-                        itemBuilder: (context, i) =>
-                            i == messages.length ? const _Typing() : _Bubble(message: messages[i]),
-                      ),
-              ),
-              if (messages.isNotEmpty)
-                SizedBox(
-                  height: 44,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: NqSpace.page),
-                    itemCount: CoachPrompts.all.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 8),
-                    itemBuilder: (context, i) => _PromptChip(
-                      text: CoachPrompts.all[i],
-                      compact: true,
-                      onTap: coach.isReplying ? null : () => _send(CoachPrompts.all[i]),
+        // The shell hides its tab bar while the keyboard is up.
+        final keyboard = View.of(context).viewInsets.bottom > 0;
+        final top = MediaQuery.paddingOf(context).top;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(NqSpace.page, top + 8, 8, 0),
+              child: Row(
+                children: [
+                  const Text('Coach', style: NqText.largeTitle),
+                  if (coach.service.isDemo) ...[const SizedBox(width: 10), const DemoBadge(label: 'Demo coach')],
+                  const Spacer(),
+                  if (messages.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Clear conversation',
+                      icon: const Icon(Icons.refresh_rounded, color: NqColors.ink),
+                      onPressed: coach.clear,
                     ),
+                ],
+              ),
+            ),
+            if (coach.service.isDemo)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(NqSpace.page, 4, NqSpace.page, NqSpace.sm),
+                child: Text(
+                  'Scripted replies that use your log — not live AI, and not medical advice. Chats aren’t saved.',
+                  style: NqText.caption,
+                ),
+              ),
+            Expanded(
+              child: messages.isEmpty
+                  ? _EmptyCoach(onPrompt: _send)
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.fromLTRB(NqSpace.page, NqSpace.sm, NqSpace.page, NqSpace.lg),
+                      itemCount: messages.length + (coach.isReplying ? 1 : 0),
+                      itemBuilder: (context, i) =>
+                          i == messages.length ? const _Typing() : _Bubble(message: messages[i]),
+                    ),
+            ),
+            if (messages.isNotEmpty)
+              SizedBox(
+                height: 44,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: NqSpace.page),
+                  itemCount: CoachPrompts.all.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) => _PromptChip(
+                    text: CoachPrompts.all[i],
+                    compact: true,
+                    onTap: coach.isReplying ? null : () => _send(CoachPrompts.all[i]),
                   ),
                 ),
-              _Composer(
-                controller: _input,
-                enabled: !coach.isReplying,
-                onSend: () => _send(),
-                bottomPadding: bottomInset,
               ),
-            ],
-          ),
+            _Composer(
+              controller: _input,
+              enabled: !coach.isReplying,
+              onSend: () => _send(),
+              bottomPadding: keyboard ? 0 : HomeShell.bottomInset(context) - 8,
+            ),
+          ],
         );
       },
     );
@@ -153,8 +148,8 @@ class _EmptyCoach extends StatelessWidget {
         child: Container(
           width: 48,
           height: 48,
-          decoration: BoxDecoration(color: NqColors.sage.withValues(alpha: 0.14), shape: BoxShape.circle),
-          child: const Icon(Icons.auto_awesome_outlined, color: NqColors.sage),
+          decoration: const BoxDecoration(color: NqColors.card, shape: BoxShape.circle, boxShadow: NqShadow.card),
+          child: const Icon(Icons.auto_awesome_outlined, color: NqColors.ink),
         ),
       ),
       const SizedBox(height: NqSpace.lg),
@@ -188,22 +183,19 @@ class _PromptChip extends StatelessWidget {
     child: Container(
       padding: EdgeInsets.symmetric(horizontal: 14, vertical: compact ? 10 : 14),
       decoration: BoxDecoration(
-        color: NqColors.surface,
-        borderRadius: BorderRadius.circular(compact ? 22 : NqRadius.control),
+        color: NqColors.card,
+        borderRadius: BorderRadius.circular(compact ? 22 : NqRadius.tile),
         border: Border.all(color: NqColors.hairline),
       ),
       child: Row(
         mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
         children: [
           if (!compact) ...[
-            const Icon(Icons.north_east_rounded, size: 16, color: NqColors.sage),
+            const Icon(Icons.north_east_rounded, size: 16, color: NqColors.ink),
             const SizedBox(width: 10),
           ],
           Flexible(
-            child: Text(
-              text,
-              style: compact ? NqText.footnote.copyWith(color: NqColors.textPrimary) : NqText.subhead,
-            ),
+            child: Text(text, style: compact ? NqText.footnote.copyWith(color: NqColors.textPrimary) : NqText.subhead),
           ),
         ],
       ),
@@ -220,9 +212,7 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = message.role == ChatRole.user;
     final careful =
-        message.kind != null &&
-        message.kind != CoachReplyKind.answer &&
-        message.kind != CoachReplyKind.fallback;
+        message.kind != null && message.kind != CoachReplyKind.answer && message.kind != CoachReplyKind.fallback;
     return Align(
       alignment: user ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
@@ -235,16 +225,21 @@ class _Bubble extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: BoxDecoration(
-                  color: user ? NqColors.sage.withValues(alpha: 0.18) : NqColors.surface,
+                  color: user ? NqColors.inkSoft : NqColors.card,
                   borderRadius: BorderRadius.only(
                     topLeft: const Radius.circular(18),
                     topRight: const Radius.circular(18),
                     bottomLeft: Radius.circular(user ? 18 : 6),
                     bottomRight: Radius.circular(user ? 6 : 18),
                   ),
-                  border: careful ? Border.all(color: NqColors.sage.withValues(alpha: 0.35)) : null,
+                  border: user
+                      ? null
+                      : Border.all(color: careful ? NqColors.inRange.withValues(alpha: 0.45) : NqColors.hairline),
                 ),
-                child: Text(message.text, style: NqText.body.copyWith(fontSize: 16)),
+                child: Text(
+                  message.text,
+                  style: NqText.body.copyWith(fontSize: 16, color: user ? NqColors.onInk : NqColors.ink),
+                ),
               ),
               if (!user && message.isDemo)
                 Padding(
@@ -270,12 +265,17 @@ class _Typing extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: NqSpace.md),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(color: NqColors.surface, borderRadius: BorderRadius.circular(18)),
+        decoration: BoxDecoration(
+          color: NqColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: NqColors.hairline),
+        ),
         child: const SizedBox(
           width: 28,
           height: 8,
           child: LinearProgressIndicator(
-            backgroundColor: NqColors.raised,
+            backgroundColor: NqColors.track,
+            color: NqColors.ink,
             borderRadius: BorderRadius.all(Radius.circular(4)),
           ),
         ),
@@ -285,12 +285,7 @@ class _Typing extends StatelessWidget {
 }
 
 class _Composer extends StatelessWidget {
-  const _Composer({
-    required this.controller,
-    required this.enabled,
-    required this.onSend,
-    required this.bottomPadding,
-  });
+  const _Composer({required this.controller, required this.enabled, required this.onSend, required this.bottomPadding});
 
   final TextEditingController controller;
   final bool enabled;
@@ -313,13 +308,15 @@ class _Composer extends StatelessWidget {
             onSubmitted: (_) => onSend(),
             decoration: InputDecoration(
               hintText: 'Ask your coach…',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: BorderSide.none,
+              filled: true,
+              fillColor: NqColors.card,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: const BorderSide(color: NqColors.hairline, width: 1.2),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(22),
-                borderSide: const BorderSide(color: NqColors.sage),
+                borderRadius: BorderRadius.circular(24),
+                borderSide: const BorderSide(color: NqColors.ink, width: 1.2),
               ),
             ),
           ),
@@ -333,14 +330,11 @@ class _Composer extends StatelessWidget {
               tooltip: 'Send',
               onPressed: canSend ? onSend : null,
               style: IconButton.styleFrom(
-                backgroundColor: NqColors.sage,
-                disabledBackgroundColor: NqColors.raised,
+                backgroundColor: NqColors.inkSoft,
+                disabledBackgroundColor: NqColors.fillPressed,
                 minimumSize: const Size(48, 48),
               ),
-              icon: Icon(
-                Icons.arrow_upward_rounded,
-                color: canSend ? NqColors.background : NqColors.textTertiary,
-              ),
+              icon: Icon(Icons.arrow_upward_rounded, color: canSend ? NqColors.onInk : NqColors.textTertiary),
             );
           },
         ),

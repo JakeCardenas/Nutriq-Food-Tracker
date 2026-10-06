@@ -46,3 +46,12 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Nutriq local build configuration (copy config/nutriq.example.json → config/nutriq.json)
+/config/nutriq.json
+/ios/Flutter/Nutriq.xcconfig
+# Never commit server secrets
+*.p8
+service-role*.txt
+supabase/.env
+supabase/.temp/

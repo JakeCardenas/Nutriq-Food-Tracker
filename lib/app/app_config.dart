@@ -8,6 +8,5 @@ abstract final class AppConfig {
   static const tagline = 'Snap a meal. Check the estimate. Keep a calm daily log.';
   static const version = '0.1.0';
 
-  static const estimateDisclaimer =
-      'Nutrition values are estimates for information only — not medical advice.';
+  static const estimateDisclaimer = 'Nutrition values are estimates for information only — not medical advice.';
 }

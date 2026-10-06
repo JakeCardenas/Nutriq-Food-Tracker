@@ -1,0 +1,11 @@
+// Copy this file to ios/Flutter/Nutriq.xcconfig (git-ignored) and fill it in.
+// Only public identifiers belong here — never a private key or client secret.
+
+// Your iOS OAuth client ID reversed, e.g. for
+// 123-abc.apps.googleusercontent.com → com.googleusercontent.apps.123-abc
+// GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.YOUR-IOS-CLIENT-ID
+
+// Paid Apple Developer Program teams only: adds the Sign in with Apple capability.
+// (A free Personal Team can't sign apps with it.) Also set APPLE_SIGN_IN_ENABLED=true
+// in config/nutriq.json so the button appears.
+// NUTRIQ_ENTITLEMENTS = Runner/RunnerWithApple.entitlements

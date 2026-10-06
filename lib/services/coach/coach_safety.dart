@@ -11,12 +11,8 @@ abstract final class CoachSafety {
     r"stop eating|not eat(ing)? (for|at all)|binge\w*)\b",
   );
   static final _calorieNumber = RegExp(r'(\d{2,4})\s*(k?cals?\b|calories?\b)');
-  static final _intakeWords = RegExp(
-    r"\b(a day|per day|each day|daily|eat|diet|only|limit|stay under|target)\b",
-  );
-  static final _fasting = RegExp(
-    r"\b((water|dry|juice) fast\w*|fast(ing)? for \d+ days?|skip (all|every) meals?)\b",
-  );
+  static final _intakeWords = RegExp(r"\b(a day|per day|each day|daily|eat|diet|only|limit|stay under|target)\b");
+  static final _fasting = RegExp(r"\b((water|dry|juice) fast\w*|fast(ing)? for \d+ days?|skip (all|every) meals?)\b");
   static final _rapidLoss = RegExp(
     r"\blose (\d+(?:\.\d+)?)\s*(lbs?|pounds|kgs?|kilos?) in (a|one|two|\d+) (days?|weeks?)\b",
   );

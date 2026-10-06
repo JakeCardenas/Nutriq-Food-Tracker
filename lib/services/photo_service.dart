@@ -42,17 +42,34 @@ abstract interface class PhotoService {
   File resolve(String storedPath);
   Future<Uint8List> readBytes(String storedPath);
   Future<void> delete(String storedPath);
+
+  /// Removes every photo this service stored (used when deleting data).
+  Future<void> deleteAll();
+
+  /// Copies a photo file from another mode (e.g. local-only → account) into this
+  /// service's folder and returns the new relative path, or null if it's missing.
+  Future<String?> importFile(File source);
 }
 
 class DevicePhotoService implements PhotoService {
-  DevicePhotoService._(this._documentsDir);
+  DevicePhotoService._(this._documentsDir, this._folder);
 
-  static const _folder = 'meal_photos';
+  /// Local-only mode keeps photos in `meal_photos/`; each signed-in account gets
+  /// `accounts/<user-id>/meal_photos/` so accounts never share photo files.
+  final String _folder;
   final String _documentsDir;
   final _picker = ImagePicker();
 
-  static Future<DevicePhotoService> create() async =>
-      DevicePhotoService._((await getApplicationDocumentsDirectory()).path);
+  static Future<DevicePhotoService> create({String? userId}) async => DevicePhotoService._(
+    (await getApplicationDocumentsDirectory()).path,
+    userId == null ? 'meal_photos' : p.join('accounts', userId, 'meal_photos'),
+  );
+
+  @override
+  Future<void> deleteAll() async {
+    final dir = Directory(p.join(_documentsDir, _folder));
+    if (await dir.exists()) await dir.delete(recursive: true);
+  }
 
   @override
   Future<PhotoPickResult> pick(PhotoSource source) async {
@@ -89,8 +106,7 @@ class DevicePhotoService implements PhotoService {
   }
 
   @override
-  File resolve(String storedPath) =>
-      File(p.isAbsolute(storedPath) ? storedPath : p.join(_documentsDir, storedPath));
+  File resolve(String storedPath) => File(p.isAbsolute(storedPath) ? storedPath : p.join(_documentsDir, storedPath));
 
   @override
   Future<Uint8List> readBytes(String storedPath) => resolve(storedPath).readAsBytes();
@@ -99,5 +115,11 @@ class DevicePhotoService implements PhotoService {
   Future<void> delete(String storedPath) async {
     final file = resolve(storedPath);
     if (await file.exists()) await file.delete();
+  }
+
+  @override
+  Future<String?> importFile(File source) async {
+    if (!await source.exists()) return null;
+    return persist(source.path);
   }
 }

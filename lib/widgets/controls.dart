@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,7 +6,7 @@ import '../app/format.dart';
 import '../app/theme.dart';
 import 'pressable.dart';
 
-/// − value + with 44pt targets and a light haptic per step.
+/// Outlined pill stepper: − value + (44 pt targets, light haptic per step).
 class StepperControl extends StatelessWidget {
   const StepperControl({
     super.key,
@@ -45,18 +46,18 @@ class StepperControl extends StatelessWidget {
       onIncrease: () => _change(value + step),
       onDecrease: () => _change(value - step),
       child: Container(
-        decoration: BoxDecoration(color: NqColors.raised, borderRadius: BorderRadius.circular(12)),
+        decoration: BoxDecoration(
+          color: NqColors.card,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: NqColors.hairline, width: 1.2),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             _StepButton(icon: Icons.remove_rounded, onTap: value > min ? () => _change(value - step) : null),
             ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 44),
-              child: Text(
-                '${format(value)}${suffix ?? ''}',
-                textAlign: TextAlign.center,
-                style: NqText.numberSmall,
-              ),
+              constraints: const BoxConstraints(minWidth: 36),
+              child: Text('${format(value)}${suffix ?? ''}', textAlign: TextAlign.center, style: NqText.numberSmall),
             ),
             _StepButton(icon: Icons.add_rounded, onTap: value < max ? () => _change(value + step) : null),
           ],
@@ -76,17 +77,17 @@ class _StepButton extends StatelessWidget {
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Pressable(
       onTap: onTap,
-      scale: 0.9,
+      scale: 0.88,
       child: SizedBox(
         width: 44,
         height: 40,
-        child: Icon(icon, size: 20, color: onTap == null ? NqColors.textTertiary : NqColors.textPrimary),
+        child: Icon(icon, size: 18, color: onTap == null ? NqColors.textTertiary : NqColors.ink),
       ),
     ),
   );
 }
 
-/// A row of mutually exclusive chips (meal type, units, …).
+/// Mutually exclusive chips (meal type, rating, …): gray, black when selected.
 class ChoiceChips<T> extends StatelessWidget {
   const ChoiceChips({
     super.key,
@@ -118,17 +119,14 @@ class ChoiceChips<T> extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
               constraints: const BoxConstraints(minHeight: 40),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: o == selected ? NqColors.sage.withValues(alpha: 0.16) : NqColors.raised,
-                borderRadius: BorderRadius.circular(NqRadius.chip),
-                border: Border.all(
-                  color: o == selected ? NqColors.sage.withValues(alpha: 0.6) : Colors.transparent,
-                ),
+                color: o == selected ? NqColors.inkSoft : NqColors.fill,
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 labelOf(o),
-                style: NqText.subhead.copyWith(color: o == selected ? NqColors.sage : NqColors.textPrimary),
+                style: NqText.subhead.copyWith(color: o == selected ? NqColors.onInk : NqColors.ink),
               ),
             ),
           ),
@@ -137,7 +135,7 @@ class ChoiceChips<T> extends StatelessWidget {
   );
 }
 
-/// Large selectable tile with title and description (onboarding choices).
+/// Large selectable tile: light gray, black when selected (single- or multi-select).
 class OptionTile extends StatelessWidget {
   const OptionTile({
     super.key,
@@ -147,6 +145,7 @@ class OptionTile extends StatelessWidget {
     this.subtitle,
     this.icon,
     this.multi = false,
+    this.centered = false,
   });
 
   final String title;
@@ -154,54 +153,203 @@ class OptionTile extends StatelessWidget {
   final IconData? icon;
   final bool selected;
   final bool multi;
+  final bool centered;
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    button: true,
-    child: Pressable(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      scale: 0.985,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: selected ? NqColors.sage.withValues(alpha: 0.10) : NqColors.surface,
-          borderRadius: BorderRadius.circular(NqRadius.control + 2),
-          border: Border.all(color: selected ? NqColors.sage.withValues(alpha: 0.7) : NqColors.hairline),
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 24, color: selected ? NqColors.sage : NqColors.textSecondary),
-              const SizedBox(width: 14),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: NqText.headline),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle!, style: NqText.footnote),
+  Widget build(BuildContext context) {
+    final fg = selected ? NqColors.onInk : NqColors.ink;
+    final sub = selected ? NqColors.onInk.withValues(alpha: 0.72) : NqColors.textSecondary;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: Pressable(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        scale: 0.985,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          constraints: const BoxConstraints(minHeight: 64),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: selected ? NqColors.inkSoft : NqColors.fill,
+            borderRadius: BorderRadius.circular(NqRadius.tile),
+          ),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.white.withValues(alpha: 0.12) : NqColors.card,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, size: 20, color: fg),
+                ),
+                const SizedBox(width: 14),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      textAlign: centered ? TextAlign.center : TextAlign.start,
+                      style: NqText.headline.copyWith(color: fg),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        textAlign: centered ? TextAlign.center : TextAlign.start,
+                        style: NqText.footnote.copyWith(color: sub),
+                      ),
+                    ],
                   ],
-                ],
+                ),
+              ),
+              if (multi) ...[
+                const SizedBox(width: 10),
+                Icon(
+                  selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                  color: selected ? NqColors.onInk : NqColors.textTertiary,
+                  size: 22,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Two-option segmented control (e.g. Imperial / Metric).
+class SegmentedPill<T> extends StatelessWidget {
+  const SegmentedPill({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  final List<T> options;
+  final T selected;
+  final String Function(T) labelOf;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(4),
+    decoration: BoxDecoration(color: NqColors.fill, borderRadius: BorderRadius.circular(999)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final o in options)
+          Semantics(
+            selected: o == selected,
+            button: true,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.selectionClick();
+                onChanged(o);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                constraints: const BoxConstraints(minHeight: 36, minWidth: 92),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: o == selected ? NqColors.card : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: o == selected
+                      ? const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))]
+                      : null,
+                ),
+                child: Text(
+                  labelOf(o),
+                  style: NqText.subhead.copyWith(color: o == selected ? NqColors.ink : NqColors.textSecondary),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            Icon(
-              selected
-                  ? (multi ? Icons.check_box_rounded : Icons.check_circle_rounded)
-                  : (multi ? Icons.check_box_outline_blank_rounded : Icons.circle_outlined),
-              color: selected ? NqColors.sage : NqColors.textTertiary,
-              size: 24,
-            ),
-          ],
+          ),
+      ],
+    ),
+  );
+}
+
+/// iOS-style wheel for picking a number (age, height, weight…).
+class NumberWheel extends StatefulWidget {
+  const NumberWheel({
+    super.key,
+    required this.values,
+    required this.selected,
+    required this.onChanged,
+    required this.labelOf,
+    this.width = 120,
+    this.semanticLabel,
+  });
+
+  final List<int> values;
+  final int selected;
+  final ValueChanged<int> onChanged;
+  final String Function(int) labelOf;
+  final double width;
+  final String? semanticLabel;
+
+  @override
+  State<NumberWheel> createState() => _NumberWheelState();
+}
+
+class _NumberWheelState extends State<NumberWheel> {
+  late final FixedExtentScrollController _controller = FixedExtentScrollController(
+    initialItem: widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1),
+  );
+
+  @override
+  void didUpdateWidget(NumberWheel old) {
+    super.didUpdateWidget(old);
+    final index = widget.values.indexOf(widget.selected);
+    if (index >= 0 && _controller.hasClients && _controller.selectedItem != index) {
+      _controller.jumpToItem(index);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: widget.semanticLabel,
+    value: widget.labelOf(widget.selected),
+    child: SizedBox(
+      width: widget.width,
+      height: 210,
+      child: CupertinoPicker.builder(
+        scrollController: _controller,
+        itemExtent: 42,
+        diameterRatio: 1.25,
+        // Painted over the selected row, so it must stay translucent.
+        selectionOverlay: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          decoration: BoxDecoration(
+            color: NqColors.ink.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
+        onSelectedItemChanged: (i) => widget.onChanged(widget.values[i]),
+        childCount: widget.values.length,
+        itemBuilder: (context, i) =>
+            Center(child: Text(widget.labelOf(widget.values[i]), style: NqText.headline.copyWith(fontSize: 19))),
       ),
     ),
   );

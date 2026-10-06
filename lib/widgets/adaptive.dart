@@ -46,7 +46,7 @@ Widget _action(BuildContext context, String label, VoidCallback onPressed, {bool
   }
   return TextButton(
     onPressed: onPressed,
-    child: Text(label, style: TextStyle(color: destructive ? NqColors.coral : NqColors.sage)),
+    child: Text(label, style: TextStyle(color: destructive ? NqColors.danger : NqColors.ink)),
   );
 }
 
@@ -68,10 +68,7 @@ Future<DateTime?> pickDateTime(BuildContext context, DateTime initial, {DateTime
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  CupertinoButton(
-                    child: const Text('Cancel'),
-                    onPressed: () => Navigator.pop(context, false),
-                  ),
+                  CupertinoButton(child: const Text('Cancel'), onPressed: () => Navigator.pop(context, false)),
                   CupertinoButton(
                     child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600)),
                     onPressed: () => Navigator.pop(context, true),
@@ -80,7 +77,7 @@ Future<DateTime?> pickDateTime(BuildContext context, DateTime initial, {DateTime
               ),
               Expanded(
                 child: CupertinoTheme(
-                  data: const CupertinoThemeData(brightness: Brightness.dark),
+                  data: const CupertinoThemeData(brightness: Brightness.light),
                   child: CupertinoDatePicker(
                     initialDateTime: start,
                     maximumDate: max,
@@ -97,12 +94,7 @@ Future<DateTime?> pickDateTime(BuildContext context, DateTime initial, {DateTime
     return ok == true ? value : null;
   }
 
-  final date = await showDatePicker(
-    context: context,
-    initialDate: start,
-    firstDate: DateTime(2020),
-    lastDate: max,
-  );
+  final date = await showDatePicker(context: context, initialDate: start, firstDate: DateTime(2020), lastDate: max);
   if (date == null || !context.mounted) return null;
   final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(start));
   if (time == null) return null;
@@ -111,7 +103,27 @@ Future<DateTime?> pickDateTime(BuildContext context, DateTime initial, {DateTime
 }
 
 void showToast(BuildContext context, String message, {SnackBarAction? action}) {
+  final inset = ToastInset.maybeOf(context);
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message), action: action, duration: const Duration(seconds: 3)));
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: action,
+        duration: const Duration(seconds: 3),
+        margin: inset == null ? null : EdgeInsets.fromLTRB(16, 0, 16, inset),
+      ),
+    );
+}
+
+/// Lifts toasts above floating chrome (the home tab bar) for screens below it.
+class ToastInset extends InheritedWidget {
+  const ToastInset({super.key, required this.bottom, required super.child});
+
+  final double bottom;
+
+  static double? maybeOf(BuildContext context) => context.getInheritedWidgetOfExactType<ToastInset>()?.bottom;
+
+  @override
+  bool updateShouldNotify(ToastInset oldWidget) => oldWidget.bottom != bottom;
 }

@@ -149,8 +149,7 @@ class UserProfile {
   };
 
   factory UserProfile.fromJson(Map<String, Object?> j) {
-    T? byName<T extends Enum>(List<T> values, Object? name) =>
-        name == null ? null : values.asNameMap()[name as String];
+    T? byName<T extends Enum>(List<T> values, Object? name) => name == null ? null : values.asNameMap()[name as String];
     return UserProfile(
       age: j['age'] as int?,
       sex: byName(SexForEstimate.values, j['sex']),

@@ -22,8 +22,7 @@ SampleFood _f(
   double carbs,
   double fat, {
   double servings = 1,
-}) =>
-    (name: name, serving: serving, servings: servings, kcal: kcal, protein: protein, carbs: carbs, fat: fat);
+}) => (name: name, serving: serving, servings: servings, kcal: kcal, protein: protein, carbs: carbs, fat: fat);
 
 final List<SampleMeal> demoSampleMeals = [
   (

@@ -6,6 +6,7 @@ import '../../app/theme.dart';
 import '../../domain/ids.dart';
 import '../../domain/models/food_item.dart';
 import '../../widgets/pressable.dart';
+import '../../widgets/sheet.dart';
 import 'food_item_form.dart';
 
 /// Add a food: pick from My foods / recent foods, or enter it manually.
@@ -36,7 +37,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     final log = AppScope.of(context).log;
     if (_manual) {
       return SheetBody(
-        title: 'Add food manually',
+        title: 'Add an ingredient',
         child: FoodItemForm(submitLabel: 'Add to meal', onSubmit: (item) => Navigator.pop(context, item)),
       );
     }
@@ -45,10 +46,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     bool matches(FoodItem f) => q.isEmpty || f.name.toLowerCase().contains(q);
     final saved = log.savedFoods.map((s) => s.item).where(matches).toList();
     final savedNames = saved.map((f) => f.name.toLowerCase()).toSet();
-    final recent = log
-        .recentFoods()
-        .where((f) => matches(f) && !savedNames.contains(f.name.toLowerCase()))
-        .toList();
+    final recent = log.recentFoods().where((f) => matches(f) && !savedNames.contains(f.name.toLowerCase())).toList();
 
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.8,
@@ -62,7 +60,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('Add food', style: NqText.title),
+                  const Text('Add an ingredient', style: NqText.title),
                   const SizedBox(height: NqSpace.md),
                   TextField(
                     decoration: const InputDecoration(
@@ -111,7 +109,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
 
   Widget _header(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(4, NqSpace.xl, 4, NqSpace.sm),
-    child: Text(text.toUpperCase(), style: NqText.caption.copyWith(letterSpacing: 0.6)),
+    child: Text(text, style: NqText.subhead.copyWith(color: NqColors.textSecondary)),
   );
 }
 
@@ -126,18 +124,13 @@ class _ManualRow extends StatelessWidget {
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: NqColors.sage.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(NqRadius.control),
-      ),
-      child: Row(
+      decoration: BoxDecoration(color: NqColors.fill, borderRadius: BorderRadius.circular(NqRadius.tile)),
+      child: const Row(
         children: [
-          const Icon(Icons.edit_note_rounded, color: NqColors.sage),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text('Enter manually', style: NqText.headline.copyWith(color: NqColors.sage)),
-          ),
-          const Icon(Icons.chevron_right_rounded, color: NqColors.sage),
+          Icon(Icons.edit_note_rounded, color: NqColors.ink),
+          SizedBox(width: 12),
+          Expanded(child: Text('Enter manually', style: NqText.headline)),
+          Icon(Icons.chevron_right_rounded, color: NqColors.textTertiary),
         ],
       ),
     ),
@@ -169,7 +162,7 @@ class _FoodPick extends StatelessWidget {
           ),
           Text('${fmtKcal(item.totals.calories)} kcal', style: NqText.numberSmall),
           const SizedBox(width: 8),
-          const Icon(Icons.add_circle_outline_rounded, color: NqColors.sage, size: 22),
+          const Icon(Icons.add_circle_rounded, color: NqColors.ink, size: 24),
         ],
       ),
     ),

@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+#include "Nutriq.defaults.xcconfig"
+// Your own values (not committed). Copy Nutriq.example.xcconfig to Nutriq.xcconfig.
+#include? "Nutriq.xcconfig"

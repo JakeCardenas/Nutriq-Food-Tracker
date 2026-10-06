@@ -30,3 +30,13 @@ String shortDate(DateTime d) => DateFormat('MMM d').format(d);
 String timeLabel(DateTime t) => DateFormat.jm().format(t);
 String dateTimeLabel(DateTime t) => '${DateFormat('EEE, MMM d').format(t)} · ${timeLabel(t)}';
 String weekdayInitial(DateTime d) => DateFormat('EEEEE').format(d);
+String weekdayShort(DateTime d) => DateFormat('EEE').format(d);
+
+/// "2 min ago", "just now", "Oct 6, 9:41 AM".
+String relativeTime(DateTime t, [DateTime? now]) {
+  final diff = (now ?? DateTime.now()).difference(t);
+  if (diff.inSeconds < 45) return 'just now';
+  if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+  if (diff.inHours < 24) return '${diff.inHours} h ago';
+  return dateTimeLabel(t);
+}

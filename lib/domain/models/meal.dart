@@ -33,6 +33,7 @@ class Meal {
     required this.items,
     this.photoPath,
     this.note,
+    this.name,
   });
 
   final String id;
@@ -43,20 +44,31 @@ class Meal {
   final String? photoPath;
   final String? note;
 
+  /// Optional user-facing name ("Chicken bowl"); falls back to the meal type.
+  final String? name;
+
   NutritionTotals get totals => NutritionTotals.sum(items.map((i) => i.totals));
 
-  String get title => type.label;
+  String get title => (name?.trim().isNotEmpty ?? false) ? name!.trim() : type.label;
 
   String get itemSummary => items.map((i) => i.name).join(', ');
 
-  Meal copyWith({DateTime? loggedAt, MealType? type, List<FoodItem>? items, String? note}) => Meal(
+  Meal copyWith({
+    DateTime? loggedAt,
+    MealType? type,
+    List<FoodItem>? items,
+    String? note,
+    String? name,
+    String? photoPath,
+  }) => Meal(
     id: id,
     loggedAt: loggedAt ?? this.loggedAt,
     type: type ?? this.type,
     source: source,
     items: items ?? this.items,
-    photoPath: photoPath,
+    photoPath: photoPath ?? this.photoPath,
     note: note ?? this.note,
+    name: name ?? this.name,
   );
 
   Map<String, Object?> toJson() => {
@@ -67,6 +79,7 @@ class Meal {
     'items': items.map((i) => i.toJson()).toList(),
     'photoPath': photoPath,
     'note': note,
+    'name': name,
   };
 
   factory Meal.fromJson(Map<String, Object?> j) => Meal(
@@ -77,6 +90,7 @@ class Meal {
     items: (j['items'] as List).map((e) => FoodItem.fromJson((e as Map).cast<String, Object?>())).toList(),
     photoPath: j['photoPath'] as String?,
     note: j['note'] as String?,
+    name: j['name'] as String?,
   );
 
   @override
@@ -88,8 +102,9 @@ class Meal {
       other.source == source &&
       listEquals(other.items, items) &&
       other.photoPath == photoPath &&
-      other.note == note;
+      other.note == note &&
+      other.name == name;
 
   @override
-  int get hashCode => Object.hash(id, loggedAt, type, source, Object.hashAll(items), photoPath, note);
+  int get hashCode => Object.hash(id, loggedAt, type, source, Object.hashAll(items), photoPath, note, name);
 }

@@ -6,18 +6,13 @@ import '../../domain/ids.dart';
 import '../../domain/models/food_item.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/controls.dart';
+import '../../widgets/sheet.dart';
 
 double? parseNumber(String text) => double.tryParse(text.trim().replaceAll(',', '.'));
 
 /// Name, portion and per-serving nutrition for one food.
 class FoodItemForm extends StatefulWidget {
-  const FoodItemForm({
-    super.key,
-    this.initial,
-    required this.submitLabel,
-    required this.onSubmit,
-    this.secondary,
-  });
+  const FoodItemForm({super.key, this.initial, required this.submitLabel, required this.onSubmit, this.secondary});
 
   final FoodItem? initial;
   final String submitLabel;
@@ -96,10 +91,7 @@ class _FoodItemFormState extends State<FoodItemForm> {
           const SizedBox(height: NqSpace.md),
           TextFormField(
             controller: _serving,
-            decoration: const InputDecoration(
-              labelText: 'Serving description',
-              hintText: 'e.g. 1 cup, 120 g',
-            ),
+            decoration: const InputDecoration(labelText: 'Serving description', hintText: 'e.g. 1 cup, 120 g'),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: NqSpace.md),
@@ -110,7 +102,7 @@ class _FoodItemFormState extends State<FoodItemForm> {
             ],
           ),
           const SizedBox(height: NqSpace.lg),
-          Text('Nutrition per serving (your best estimate)', style: NqText.footnote),
+          Text('Nutrition per serving — your best estimate', style: NqText.subhead),
           const SizedBox(height: NqSpace.sm),
           TextFormField(
             controller: _kcal,
@@ -123,11 +115,7 @@ class _FoodItemFormState extends State<FoodItemForm> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final (label, controller) in [
-                ('Protein', _protein),
-                ('Carbs', _carbs),
-                ('Fat', _fat),
-              ]) ...[
+              for (final (label, controller) in [('Protein', _protein), ('Carbs', _carbs), ('Fat', _fat)]) ...[
                 if (label != 'Protein') const SizedBox(width: NqSpace.sm),
                 Expanded(
                   child: TextFormField(
@@ -142,7 +130,7 @@ class _FoodItemFormState extends State<FoodItemForm> {
             ],
           ),
           const SizedBox(height: NqSpace.xl),
-          PrimaryButton(label: widget.submitLabel, onPressed: _submit, height: 52),
+          PrimaryButton(label: widget.submitLabel, onPressed: _submit),
           if (widget.secondary != null) ...[const SizedBox(height: NqSpace.sm), widget.secondary!],
         ],
       ),
@@ -169,7 +157,7 @@ Future<FoodSheetResult?> showFoodItemSheet(
     isScrollControlled: true,
     useSafeArea: true,
     builder: (context) => SheetBody(
-      title: 'Edit food',
+      title: 'Edit ingredient',
       child: FoodItemForm(
         initial: item,
         submitLabel: 'Done',
@@ -181,7 +169,7 @@ Future<FoodSheetResult?> showFoodItemSheet(
             QuietButton(
               label: 'Remove',
               icon: Icons.delete_outline_rounded,
-              color: NqColors.coral,
+              color: NqColors.danger,
               onPressed: () => Navigator.pop(context, const FoodSheetResult(FoodSheetAction.remove)),
             ),
           ],
@@ -216,38 +204,4 @@ class _SaveToMyFoodsButtonState extends State<_SaveToMyFoodsButton> {
             if (mounted) setState(() => _saved = true);
           },
   );
-}
-
-/// Shared chrome for Nutriq bottom sheets: title, scrolling body, keyboard-safe.
-class SheetBody extends StatelessWidget {
-  const SheetBody({super.key, required this.title, required this.child, this.trailing});
-
-  final String title;
-  final Widget child;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(NqSpace.page, 0, NqSpace.page, NqSpace.xxl),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(title, style: NqText.title)),
-                ?trailing,
-              ],
-            ),
-            const SizedBox(height: NqSpace.lg),
-            child,
-          ],
-        ),
-      ),
-    );
-  }
 }
