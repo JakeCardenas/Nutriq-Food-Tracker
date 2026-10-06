@@ -182,6 +182,37 @@ class BodyWheels extends StatelessWidget {
   }
 }
 
+/// A weight wheel with its own Imperial / Metric switch (goal weight).
+class WeightWithUnits extends StatelessWidget {
+  const WeightWithUnits({
+    super.key,
+    required this.units,
+    required this.kg,
+    required this.onChanged,
+    required this.onUnits,
+  });
+
+  final UnitSystem units;
+  final double kg;
+  final ValueChanged<double> onChanged;
+  final ValueChanged<UnitSystem> onUnits;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SegmentedPill<UnitSystem>(
+        options: const [UnitSystem.imperial, UnitSystem.metric],
+        selected: units,
+        labelOf: (u) => u.label,
+        onChanged: onUnits,
+      ),
+      const SizedBox(height: NqSpace.xl),
+      WeightWheel(units: units, kg: kg, onChanged: onChanged),
+    ],
+  );
+}
+
 class WeightWheel extends StatelessWidget {
   const WeightWheel({super.key, required this.units, required this.kg, required this.onChanged});
 
@@ -191,8 +222,10 @@ class WeightWheel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Keyed by unit so switching units builds a fresh wheel at the converted value.
     if (units == UnitSystem.metric) {
       return NumberWheel(
+        key: const ValueKey('kg'),
         values: [for (var k = 35; k <= 250; k++) k],
         selected: kg.round().clamp(35, 250),
         labelOf: (k) => '$k kg',
@@ -201,6 +234,7 @@ class WeightWheel extends StatelessWidget {
       );
     }
     return NumberWheel(
+      key: const ValueKey('lb'),
       values: [for (var l = 80; l <= 550; l++) l],
       selected: kgToLb(kg).round().clamp(80, 550),
       labelOf: (l) => '$l lb',

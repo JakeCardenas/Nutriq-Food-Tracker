@@ -61,6 +61,13 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_step == _Step.building) _runBuilding();
   }
 
+  /// Saves the unit choice and redraws the current step with it.
+  void _setUnits(UnitSystem units) {
+    final profile = AppScope.of(context).profile;
+    profile.updateSettings(profile.settings.copyWith(units: units));
+    setState(() {});
+  }
+
   void _next() => _go(_index + 1);
 
   void _back() {
@@ -177,10 +184,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         weightKg: _weightKg,
         onHeight: (h) => setState(() => _heightCm = h),
         onWeight: (w) => setState(() => _weightKg = w),
-        onUnits: (u) {
-          final p = AppScope.of(context).profile;
-          p.updateSettings(p.settings.copyWith(units: u));
-        },
+        onUnits: _setUnits,
       ),
     ),
     _Step.goalWeight => _Question(
@@ -188,10 +192,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       why: 'Optional context for the coach. Nutriq never predicts when you’ll reach it.',
       centerChild: true,
       child: Center(
-        child: WeightWheel(
+        child: WeightWithUnits(
           units: units,
           kg: _goalWeightKg ?? _draft.weightKg ?? _weightKg,
           onChanged: (w) => setState(() => _goalWeightKg = w),
+          onUnits: _setUnits,
         ),
       ),
     ),

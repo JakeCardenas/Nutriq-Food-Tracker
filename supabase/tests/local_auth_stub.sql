@@ -25,6 +25,7 @@ grant usage on schema auth to anon, authenticated;
 grant execute on function auth.uid() to anon, authenticated;
 grant usage on schema public to anon, authenticated;
 
--- Supabase grants these by default; RLS is what actually protects the rows.
-alter default privileges in schema public grant all on tables to anon, authenticated;
+-- Mirrors a project created with "Automatically expose new tables" turned OFF
+-- (Supabase's recommendation): no automatic table grants, so the migration's own
+-- grants must be enough.
 alter default privileges in schema public grant all on functions to anon, authenticated;

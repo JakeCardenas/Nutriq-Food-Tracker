@@ -156,6 +156,13 @@ alter table public.scan_feedback enable row level security;
 
 revoke all on public.profiles, public.meals, public.meal_items, public.saved_foods, public.scan_feedback from anon;
 
+-- Grant signed-in users exactly what the app needs, so this works whether or not
+-- the project "automatically exposes new tables". RLS above limits it to their own rows.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete
+  on public.profiles, public.meals, public.meal_items, public.saved_foods, public.scan_feedback
+  to authenticated;
+
 create policy "profiles: owner select" on public.profiles for select to authenticated
   using ((select auth.uid()) = user_id);
 create policy "profiles: owner insert" on public.profiles for insert to authenticated

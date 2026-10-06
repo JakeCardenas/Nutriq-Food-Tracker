@@ -101,8 +101,16 @@ class PersonalDetailsScreen extends StatelessWidget {
                       note: 'Optional. Nutriq never suggests a timeline or a rate of loss.',
                       initial: p.goalWeightKg ?? p.weightKg ?? 70,
                       canRemove: p.goalWeightKg != null,
-                      editor: (value, set) => Center(
-                        child: WeightWheel(units: units, kg: value, onChanged: set),
+                      editor: (value, set) => ListenableBuilder(
+                        listenable: controller,
+                        builder: (context, _) => Center(
+                          child: WeightWithUnits(
+                            units: controller.settings.units,
+                            kg: value,
+                            onChanged: set,
+                            onUnits: (u) => controller.updateSettings(controller.settings.copyWith(units: u)),
+                          ),
+                        ),
                       ),
                       apply: (v) => p.copyWith(goalWeightKg: v),
                       remove: () => p.copyWith(goalWeightKg: null),

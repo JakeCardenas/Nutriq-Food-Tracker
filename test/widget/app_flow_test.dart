@@ -122,6 +122,23 @@ void main() {
     expect(find.text('Set a calorie goal'), findsNothing);
   });
 
+  testWidgets('goal weight can be switched between lb and kg', (tester) async {
+    await _launch(tester);
+    await _tapText(tester, 'Get started');
+    await _tapText(tester, 'Skip for now'); // goal
+    await _tapText(tester, 'Skip for now'); // sex
+    await _tapText(tester, 'Continue'); // age
+    await _tapText(tester, 'Imperial');
+    await _tapText(tester, 'Continue'); // height & weight
+    expect(find.text('Goal weight'), findsOneWidget);
+    expect(find.text('154 lb'), findsOneWidget);
+    expect(find.text('Metric'), findsOneWidget, reason: 'a unit switch on the goal weight step');
+
+    await _tapText(tester, 'Metric');
+    expect(find.text('70 kg'), findsOneWidget);
+    expect(find.text('154 lb'), findsNothing);
+  });
+
   testWidgets('a pregnancy answer skips calculated targets', (tester) async {
     final deps = await _launch(tester);
     await _tapText(tester, 'Get started');

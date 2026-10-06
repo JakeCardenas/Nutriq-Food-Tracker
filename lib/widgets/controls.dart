@@ -312,13 +312,22 @@ class _NumberWheelState extends State<NumberWheel> {
     initialItem: widget.values.indexOf(widget.selected).clamp(0, widget.values.length - 1),
   );
 
+  /// True while the wheel moves itself to match a new [NumberWheel.selected];
+  /// that move must not be reported back as the person's choice.
+  bool _syncing = false;
+
   @override
-  void didUpdateWidget(NumberWheel old) {
-    super.didUpdateWidget(old);
+  void didUpdateWidget(NumberWheel oldWidget) {
+    super.didUpdateWidget(oldWidget);
     final index = widget.values.indexOf(widget.selected);
-    if (index >= 0 && _controller.hasClients && _controller.selectedItem != index) {
+    if (index < 0) return;
+    // Jump after this frame: jumping now would notify the parent mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_controller.hasClients || _controller.selectedItem == index) return;
+      _syncing = true;
       _controller.jumpToItem(index);
-    }
+      _syncing = false;
+    });
   }
 
   @override
@@ -346,7 +355,9 @@ class _NumberWheelState extends State<NumberWheel> {
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        onSelectedItemChanged: (i) => widget.onChanged(widget.values[i]),
+        onSelectedItemChanged: (i) {
+          if (!_syncing) widget.onChanged(widget.values[i]);
+        },
         childCount: widget.values.length,
         itemBuilder: (context, i) =>
             Center(child: Text(widget.labelOf(widget.values[i]), style: NqText.headline.copyWith(fontSize: 19))),
