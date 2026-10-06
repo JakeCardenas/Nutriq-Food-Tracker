@@ -107,5 +107,5 @@ flutter_launcher_icons:
   android: true
   image_path: "assets/icon/nutriq_icon.png"
   remove_alpha_ios: true
-  adaptive_icon_background: "#0F1012"
+  adaptive_icon_background: "assets/icon/nutriq_icon_background.png"
   adaptive_icon_foreground: "assets/icon/nutriq_icon_foreground.png"
