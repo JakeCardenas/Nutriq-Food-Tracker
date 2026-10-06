@@ -41,18 +41,21 @@ void main() {
     final deps = await TestDeps.create(health: health);
     await deps.pumpApp(tester);
     expect(health.readRequests, 0, reason: 'no permission prompt at launch');
-    expect(find.text('Activity · Apple Health'), findsNothing);
 
     await _openSettings(tester);
     await _tapText(tester, 'Connect Apple Health');
     expect(health.readRequests, 1);
     expect(health.writeRequests, 0, reason: 'writing is a separate opt-in');
     expect(find.text('Add meals to Apple Health'), findsOneWidget);
+    expect(find.text('Connected'), findsNothing, reason: 'iOS never confirms read access');
+    expect(find.textContaining('doesn’t tell apps'), findsOneWidget);
 
     await tester.tap(find.text('Today').last);
     await tester.pumpAndSettle();
-    expect(find.text('Activity · Apple Health'), findsOneWidget);
+    await tester.drag(find.byKey(const ValueKey('nutrition-pager')), const Offset(-400, 0));
+    await tester.pumpAndSettle();
     expect(find.text('6,200'), findsOneWidget);
+    expect(find.text('Steps today'), findsOneWidget);
   });
 
   testWidgets('empty Apple Health data is described without claiming access was denied', (tester) async {

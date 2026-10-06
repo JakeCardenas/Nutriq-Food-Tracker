@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../app/app_config.dart';
 import '../../app/app_scope.dart';
@@ -110,8 +113,11 @@ class _TodayScreenState extends State<TodayScreen> {
                 ),
               ),
             const SizedBox(height: 10),
-            MacroRingRow(totals: totals, references: MacroReferences.forProfile(profile)),
-            if (isToday && health.isConnected) ...[const SizedBox(height: 10), _ActivityCard(health: health)],
+            _NutritionPager(
+              macros: MacroRingRow(totals: totals, references: MacroReferences.forProfile(profile)),
+              health: health,
+              isToday: isToday,
+            ),
             if (drafts.isNotEmpty) ...[
               const SectionHeader('Scanning'),
               for (final d in drafts)
@@ -240,85 +246,274 @@ class _SyncChip extends StatelessWidget {
   }
 }
 
-/// Today's activity from Apple Health. Read on this phone only.
-class _ActivityCard extends StatelessWidget {
-  const _ActivityCard({required this.health});
+/// Macro rings, and — where Apple Health exists — a second page with today's
+/// activity. Swipes with native page physics; dots show where you are.
+class _NutritionPager extends StatefulWidget {
+  const _NutritionPager({required this.macros, required this.health, required this.isToday});
+
+  final Widget macros;
   final HealthController health;
+  final bool isToday;
+
+  @override
+  State<_NutritionPager> createState() => _NutritionPagerState();
+}
+
+class _NutritionPagerState extends State<_NutritionPager> {
+  final _pages = PageController();
+  int _page = 0;
+
+  /// Natural height of each page; the pager uses the taller one so neither
+  /// page stretches or clips.
+  final _heights = <int, double>{};
+
+  Widget _measured(int index, Widget page) => OverflowBox(
+    alignment: Alignment.center,
+    minHeight: 0,
+    maxHeight: double.infinity,
+    child: _MeasureHeight(
+      onHeight: (h) {
+        if (mounted && _heights[index] != h) setState(() => _heights[index] = h);
+      },
+      child: page,
+    ),
+  );
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final snap = health.today;
-    final workouts = snap?.workouts ?? const [];
-    final minutes = workouts.fold<int>(0, (sum, w) => sum + w.duration.inMinutes);
-    return NqCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      onTap: health.refresh,
-      semanticLabel: 'Activity from Apple Health. Double tap to refresh.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    if (widget.health.status == HealthStatus.unsupported) return widget.macros;
+    // The pager takes the macro cards' natural height (measured), so nothing
+    // stretches; the estimate only covers the very first frame.
+    final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final measured = [?_heights[0], ?_heights[1]];
+    final height = measured.isEmpty ? 150 + 40 * (textScale - 1) : measured.reduce(math.max);
+    return Column(
+      children: [
+        SizedBox(
+          height: height,
+          child: PageView(
+            key: const ValueKey('nutrition-pager'),
+            controller: _pages,
+            onPageChanged: (i) => setState(() => _page = i),
             children: [
-              const Icon(Icons.favorite_rounded, size: 16, color: NqColors.danger),
-              const SizedBox(width: 6),
-              Expanded(child: Text('Activity · Apple Health', style: NqText.footnote)),
-              if (health.lastRead != null) Text('Updated ${relativeTime(health.lastRead!)}', style: NqText.caption),
+              _measured(0, widget.macros),
+              _measured(1, _ActivityPage(health: widget.health, isToday: widget.isToday)),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _Stat(
-                icon: Icons.directions_walk_rounded,
-                value: snap?.steps == null ? '—' : fmtKcal(snap!.steps!),
-                label: 'Steps',
-              ),
-              _Stat(
-                icon: Icons.local_fire_department_outlined,
-                value: snap?.activeEnergyKcal == null ? '—' : fmtKcal(snap!.activeEnergyKcal!),
-                label: 'Active kcal',
-              ),
-              _Stat(
-                icon: Icons.fitness_center_rounded,
-                value: workouts.isEmpty ? '—' : '$minutes min',
-                label: workouts.length == 1 ? '1 workout' : '${workouts.length} workouts',
-              ),
-            ],
+        ),
+        const SizedBox(height: 10),
+        _PageDots(
+          key: const ValueKey('page-dots'),
+          count: 2,
+          index: _page,
+          onTap: (i) => _pages.animateToPage(
+            i,
+            duration: MediaQuery.of(context).disableAnimations ? Duration.zero : const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
           ),
-          if (health.message != null) ...[const SizedBox(height: 10), Text(health.message!, style: NqText.caption)],
-          const SizedBox(height: 8),
-          Text(
-            'Activity is shown for context. Nutriq doesn’t add it to your calorie range.',
-            style: NqText.caption.copyWith(color: NqColors.textTertiary),
+        ),
+        if (_page == 1 && widget.health.isConnected && widget.health.message != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+            child: Text(widget.health.message!, style: NqText.caption, textAlign: TextAlign.center),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.icon, required this.value, required this.label});
-  final IconData icon;
-  final String value;
-  final String label;
+/// Reports its child's laid-out height after each layout that changes it.
+class _MeasureHeight extends SingleChildRenderObjectWidget {
+  const _MeasureHeight({required this.onHeight, required super.child});
+
+  final ValueChanged<double> onHeight;
 
   @override
-  Widget build(BuildContext context) => Expanded(
+  RenderObject createRenderObject(BuildContext context) => _RenderMeasureHeight(onHeight);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderMeasureHeight renderObject) => renderObject.onHeight = onHeight;
+}
+
+class _RenderMeasureHeight extends RenderProxyBox {
+  _RenderMeasureHeight(this.onHeight);
+
+  ValueChanged<double> onHeight;
+  double? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final height = size.height;
+    if (height != _last) {
+      _last = height;
+      WidgetsBinding.instance.addPostFrameCallback((_) => onHeight(height));
+    }
+  }
+}
+
+class _PageDots extends StatelessWidget {
+  const _PageDots({super.key, required this.count, required this.index, required this.onTap});
+
+  final int count;
+  final int index;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Page ${index + 1} of $count',
     child: Row(
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, size: 20, color: NqColors.ink),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FittedBox(child: Text(value, style: NqText.numberSmall.copyWith(fontSize: 16))),
-              Text(label, style: NqText.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ],
+        for (var i = 0; i < count; i++)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onTap(i),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i == index ? NqColors.ink : NqColors.textTertiary.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Today's activity from Apple Health — read on this phone only, never synced.
+class _ActivityPage extends StatelessWidget {
+  const _ActivityPage({required this.health, required this.isToday});
+
+  final HealthController health;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!health.isConnected) {
+      // Opening Settings asks for nothing: permission is only requested there.
+      return NqCard(
+        radius: 18,
+        onTap: () => HomeShellScope.maybeOf(context)?.selectTab(HomeShell.tabSettings),
+        semanticLabel: 'See your activity here. Opens Settings to connect Apple Health.',
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(color: NqColors.fill, shape: BoxShape.circle),
+              child: const Icon(Icons.favorite_rounded, color: NqColors.danger, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('See your activity here', style: NqText.headline),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Optional steps and active energy from Apple Health, kept on this phone.',
+                    style: NqText.footnote,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Open Settings', style: NqText.subhead),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: NqColors.textTertiary),
+          ],
+        ),
+      );
+    }
+    final snap = isToday ? health.today : null;
+    final workouts = snap?.workouts ?? const [];
+    final minutes = workouts.fold<int>(0, (sum, w) => sum + w.duration.inMinutes);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: _ActivityCard(
+            value: snap?.steps == null ? '—' : fmtKcal(snap!.steps!),
+            label: 'Steps today',
+            icon: Icons.directions_walk_rounded,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ActivityCard(
+            value: snap?.activeEnergyKcal == null ? '—' : fmtKcal(snap!.activeEnergyKcal!),
+            label: 'Active kcal',
+            icon: Icons.local_fire_department_outlined,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _ActivityCard(
+            value: workouts.isEmpty ? '—' : '$minutes min',
+            label: workouts.length == 1 ? '1 workout' : '${workouts.length} workouts',
+            icon: Icons.fitness_center_rounded,
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  const _ActivityCard({required this.value, required this.label, required this.icon});
+
+  final String value;
+  final String label;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: '$label: $value, from Apple Health',
+    excludeSemantics: true,
+    child: NqCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      radius: 18,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: NqText.metric),
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(label, style: NqText.caption, maxLines: 1),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: NqColors.track, width: 7),
+              ),
+              child: Icon(icon, size: 20, color: NqColors.ink),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

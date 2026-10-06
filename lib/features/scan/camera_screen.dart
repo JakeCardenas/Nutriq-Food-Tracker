@@ -95,9 +95,11 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   Future<void> _capture() async {
     final controller = _controller;
     if (controller == null || _capturing || !controller.value.isInitialized) return;
+    // The white shutter flash is skipped with Reduce Motion (no sudden brightness change).
+    final flash = !MediaQuery.of(context).disableAnimations;
     setState(() {
       _capturing = true;
-      _shutterFlash = true;
+      _shutterFlash = flash;
     });
     HapticFeedback.mediumImpact();
     Timer(const Duration(milliseconds: 120), () {
@@ -178,10 +180,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
-                        child: Text(
-                          'Nutriq',
-                          textAlign: TextAlign.center,
-                          style: NqText.headline.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Nutriq',
+                              textAlign: TextAlign.center,
+                              style: NqText.headline.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                            ),
+                            if (AppScope.of(context).analysis.isDemo) ...[const SizedBox(height: 6), const _DemoPill()],
+                          ],
                         ),
                       ),
                       CircleButton(
@@ -457,6 +465,32 @@ class _NoCamera extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           QuietButton(label: 'Log manually', color: Colors.white, onPressed: onManual),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Says, on the camera itself, that results will be samples rather than analysis.
+class _DemoPill extends StatelessWidget {
+  const _DemoPill();
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Demo analysis: results are samples, not based on your photo',
+    excludeSemantics: true,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: NqColors.demoFill, borderRadius: BorderRadius.circular(999)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.science_outlined, size: 13, color: NqColors.demoInk),
+          const SizedBox(width: 4),
+          Text(
+            'Demo analysis',
+            style: NqText.caption.copyWith(color: NqColors.demoInk, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     ),

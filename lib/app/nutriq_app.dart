@@ -15,14 +15,37 @@ import 'theme.dart';
 /// Root widget. Each session (local-only or a signed-in account) gets its own
 /// [MaterialApp] — keyed by session — so switching accounts can never leave a
 /// screen from the previous account on the navigation stack.
-class NutriqApp extends StatelessWidget {
+class NutriqApp extends StatefulWidget {
   const NutriqApp({super.key, required this.sessions, required this.auth});
 
   final SessionController sessions;
   final AuthService auth;
 
   @override
+  State<NutriqApp> createState() => _NutriqAppState();
+}
+
+class _NutriqAppState extends State<NutriqApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) widget.sessions.appResumed();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final sessions = widget.sessions;
     return ListenableBuilder(
       listenable: sessions,
       builder: (context, _) {
@@ -31,7 +54,7 @@ class NutriqApp extends StatelessWidget {
         return AppScope(
           sessions: sessions,
           session: session,
-          auth: auth,
+          auth: widget.auth,
           child: _app(key: ValueKey(session.key), home: const _SessionHome()),
         );
       },

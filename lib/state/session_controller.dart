@@ -67,7 +67,11 @@ class SessionController extends ChangeNotifier {
 
   Future<void> start() {
     _sub = auth.events.listen(_onAuthEvent);
-    return _enqueue(() => _switchTo(auth.currentUser));
+    return _enqueue(() async {
+      await _switchTo(auth.currentUser);
+      // Still signed in from last time: catch up with changes from other devices.
+      unawaited(_session?.sync?.syncNow());
+    });
   }
 
   /// Completes when queued session switches have finished.
@@ -240,6 +244,14 @@ class SessionController extends ChangeNotifier {
     await _enqueue(() async {
       if (_session?.isAccount ?? false) await _switchTo(null);
     });
+  }
+
+  /// The app came back to the foreground: catch up with other devices and
+  /// re-read today's Apple Health numbers (only if the person turned that on).
+  Future<void> appResumed() async {
+    final session = _session;
+    if (session == null) return;
+    await Future.wait([?session.sync?.syncNow(), session.health.refresh()]);
   }
 
   /// Rebuilds the current session (after wiping its data).

@@ -152,10 +152,8 @@ Future<FoodSheetResult?> showFoodItemSheet(
   required FoodItem item,
   required Future<void> Function(FoodItem) onSaveToMyFoods,
 }) {
-  return showModalBottomSheet<FoodSheetResult>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
+  return showNqSheetWith<FoodSheetResult>(
+    context,
     builder: (context) => SheetBody(
       title: 'Edit ingredient',
       child: FoodItemForm(

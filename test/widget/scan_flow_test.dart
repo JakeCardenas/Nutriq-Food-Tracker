@@ -126,6 +126,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Camera isn’t available'), findsOneWidget);
+    expect(find.text('Demo analysis'), findsOneWidget, reason: 'the camera says results are samples');
     await tester.tap(find.text('Choose from library'));
     await tester.pumpAndSettle();
     expect(deps.scans.drafts, hasLength(1));

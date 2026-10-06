@@ -110,6 +110,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   @override
   Widget build(BuildContext context) {
     final units = AppScope.of(context).profile.settings.units;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return PopScope(
       canPop: _index == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -125,14 +126,17 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     if (_step != _Step.building) _TopBar(progress: _index / _progressTotal, onBack: _back),
                     Expanded(
                       child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 240),
+                        duration: Duration(milliseconds: reduceMotion ? 120 : 240),
                         switchInCurve: Curves.easeOutCubic,
+                        // Reduce Motion: a short cross-fade, no sideways slide.
                         transitionBuilder: (child, animation) => FadeTransition(
                           opacity: animation,
-                          child: SlideTransition(
-                            position: Tween(begin: const Offset(0.04, 0), end: Offset.zero).animate(animation),
-                            child: child,
-                          ),
+                          child: reduceMotion
+                              ? child
+                              : SlideTransition(
+                                  position: Tween(begin: const Offset(0.04, 0), end: Offset.zero).animate(animation),
+                                  child: child,
+                                ),
                         ),
                         child: KeyedSubtree(key: ValueKey(_step), child: _body(units)),
                       ),

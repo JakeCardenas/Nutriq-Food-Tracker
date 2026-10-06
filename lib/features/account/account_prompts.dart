@@ -79,11 +79,9 @@ Future<void> showImportSheet(BuildContext context, ImportSummary offer) {
     if (offer.savedFoods > 0) '${offer.savedFoods} saved ${offer.savedFoods == 1 ? 'food' : 'foods'}',
     if (offer.feedback > 0) '${offer.feedback} scan ${offer.feedback == 1 ? 'rating' : 'ratings'}',
   ];
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    isDismissible: false,
+  return showNqSheetWith<void>(
+    context,
+    dismissible: false,
     builder: (sheetContext) => StatefulBuilder(
       builder: (sheetContext, setState) => SheetBody(
         title: 'Bring this phone’s data into your account?',

@@ -2,10 +2,38 @@
 
 Snap a meal. Check the estimate. Keep a calm daily log.
 
-Nutriq is a free, local-first food logging app for iPhone (and Android) built with Flutter.
-Take or choose a meal photo, review and correct the suggested foods, and save meals to a daily log.
-A short optional onboarding creates a personal starting point, and a coach helps with your goal.
-No account, no ads, no paywall — and every number is labeled as an estimate.
+Nutriq is a free food-logging app for iPhone (and Android) built with Flutter. Photograph a meal, review and
+correct the suggested foods and portions, and save it to your daily log. An optional, short onboarding gives you an
+editable starting point. Every nutrition number is labelled as an estimate. No ads, no paywall.
+
+**Step-by-step setup (beginner-friendly):** [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md)
+
+---
+
+## Two ways to run it
+
+| | **Local-only mode** | **Cloud-sync mode** |
+|---|---|---|
+| When | You run without `config/nutriq.json`, or the person doesn't sign in | You build with your Supabase config **and** the person signs in |
+| Where data lives | Only on the phone (SQLite + app folder) | On the phone, synced to the person's own rows in your Supabase project |
+| Account needed | No | Yes (email; Google/Apple once configured) |
+
+Without the config file the app still works fully; the sign-in options are simply hidden and Settings says
+“Accounts and sync aren't set up in this build”.
+
+### What syncs, and what never leaves the phone
+
+| Synced to Supabase (signed in only) | Always stays on the phone |
+|---|---|
+| Profile answers and goals (calorie range, protein reference) | **Meal photos** (never uploaded) |
+| Settings (units, day start) | **Apple Health data** (steps, workouts, energy, weight) |
+| Meals and their foods | Scans that are still drafts |
+| My foods (saved foods) | Coach chats (not saved at all) |
+| Scan ratings | Anything from local-only mode — until the person explicitly taps **Import** after signing in |
+
+Each signed-in account has its own database file and photo folder on the device, so switching accounts never shows
+another person's meals. Offline edits are kept and sync later; if two devices edit the same thing, the newer edit
+wins and the older one is listed under **Settings → Account** where it can be restored.
 
 ---
 
@@ -13,22 +41,21 @@ No account, no ads, no paywall — and every number is labeled as an estimate.
 
 | Feature | Status |
 |---|---|
-| Onboarding, starting-point estimate (Mifflin–St Jeor), editable goal range | **Real** — computed on the device |
-| Under-18 and health-condition safeguards (no calorie targets) | **Real** |
-| Meal log, History, editing foods/portions/date/time, My foods, scan feedback | **Real** — stored on the device (SQLite) |
-| Taking/choosing a photo | **Real** — photo is kept on the phone, never uploaded |
-| **Food recognition from the photo** | **Demo only.** Returns one of 8 sample meals (same photo → same sample). The app says so on the scan screen and the review screen. It does **not** look at what's in the photo. |
-| **Coach** | **Demo only.** Rule-based, scripted replies that use your real profile and log (e.g. protein so far). Labeled "Demo coach — not live AI". Safety rules (extreme restriction, eating-disorder cues, medical questions, predictions, under-18 dieting) are real. |
-| Accounts, cloud sync, analytics, barcode scanning | Not included in this version |
-
-To make analysis or coaching real, implement `FoodAnalysisService` / `CoachService` against **your own
-backend** (see [Connecting a real AI backend](#connecting-a-real-ai-backend)). Never put AI-provider keys in the app.
+| Onboarding, starting-point estimate (Mifflin–St Jeor), editable calorie range and protein reference | **Real**, computed on the device |
+| Safeguards: no calorie/protein targets under 18; no calculated targets with pregnancy, breastfeeding or a relevant medical condition; ranges never below max(1,200 kcal, resting energy) | **Real.** The under-18 rule and the 1,200–6,000 kcal bounds are also enforced by the database |
+| Meal log, History, editing foods/portions/time, My foods, scan ratings, streaks | **Real** |
+| Email sign-up/sign-in, confirmation and password-reset links, sync, conflict review, account deletion | **Real** once Supabase is configured (see below) |
+| Sign in with Google | Code is ready; needs Google Cloud client IDs and the Supabase Google provider — **off until you configure it** |
+| Sign in with Apple | Code is ready, iOS only; needs the paid Apple Developer Program and the Supabase Apple provider — **off by default** |
+| Apple Health (read steps, workouts, active energy, weight; optionally write meal nutrition) | **Real, iOS only, opt-in from Settings.** Android Health Connect isn't supported yet. |
+| **Food recognition from photos** | **Demo only.** Returns one of 8 sample meals (same photo → same sample). It does **not** look at your photo. The camera, the scan card and the review screen all say “Demo”. |
+| **Coach** | **Demo only.** Scripted replies that use your real profile and log, labelled “Demo coach”. Its safety rules are real. |
 
 ---
 
 ## Run it
 
-Prerequisites on this Mac: Flutter 3.47+, Xcode (installed). Android needs Android Studio (not installed yet).
+Prerequisites: Flutter 3.47+, Xcode (for iOS). Android needs Android Studio.
 
 ```bash
 flutter pub get
@@ -38,154 +65,152 @@ flutter pub get
 flutter test
 ```
 
-### On the iOS Simulator
-
-```bash
-open -a Simulator
-```
+**Local-only mode** (no accounts):
 
 ```bash
 flutter run
 ```
 
-The Simulator has no real camera — use **Choose photo** (it includes sample photos).
+**Cloud-sync mode:** create your local config from the example, fill in your project's values, then pass it at
+build time. Supabase is only enabled when the values come in through this flag.
 
-### On your own iPhone (free, no paid developer account)
+```bash
+cp config/nutriq.example.json config/nutriq.json
+```
+
+```bash
+flutter run --dart-define-from-file=config/nutriq.json
+```
+
+`config/nutriq.json` is git-ignored. It holds **only public client values**:
+
+| Key | Value |
+|---|---|
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+| `SUPABASE_ANON_KEY` | Your project's **publishable** key (`sb_publishable_…`) or legacy **anon** key — never the secret/service-role key |
+| `AUTH_REDIRECT_URL` | `com.prodbyjake.nutriq://login-callback` (leave as is) |
+| `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID` | OAuth **client IDs** (not secrets). Leave empty to hide Google sign-in |
+| `APPLE_SIGN_IN_ENABLED` | `true` only after Sign in with Apple is set up (paid team) |
+
+Never put a service-role/secret key, a Google client secret, an Apple private key (`.p8`) or an AI-provider key in
+the app or in git.
+
+Use the same flag for release builds, e.g.:
+
+```bash
+flutter build ipa --release --dart-define-from-file=config/nutriq.json
+```
+
+The iOS Simulator has no camera: the camera screen offers **Choose from library** instead.
+
+---
+
+## Supabase setup (summary)
+
+Full click-by-click steps are in [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TESTING.md).
+
+1. **Database:** open `supabase/migrations/20261006000000_nutriq_schema.sql`, paste it into the Supabase **SQL
+   Editor** and run it once (or `supabase db push` with the Supabase CLI). It creates five tables, Row Level Security
+   (owner-only on every table and operation), sync functions, and grants only signed-in users access to their own
+   rows. Logged-out requests are refused.
+2. **Auth URLs:** Authentication → URL Configuration → Redirect URLs → add
+   `com.prodbyjake.nutriq://login-callback`.
+3. **Email:** enabled by default with “Confirm email” on — keep it on.
+4. **Account deletion:** deploy `supabase/functions/delete-account` (Edge Functions → Deploy a new function → Via
+   Editor, name `delete-account`, paste `index.ts`; or `supabase functions deploy delete-account`). In the
+   function's settings turn **off** “Verify JWT with legacy secret” — the function verifies the caller itself.
+   It uses the service-role key that Supabase injects on the server; you never copy that key anywhere.
+5. **Google / Apple:** see the guide. Until then the buttons stay hidden.
+
+To check the database rules locally against a throwaway Postgres (two users, cross-user access attempts):
+
+```bash
+bash supabase/tests/run_rls_tests_locally.sh
+```
+
+---
+
+## Apple Health
+
+Off by default. **Settings → Apple Health → Connect** shows Apple's permission sheet for reading steps, workouts,
+active energy and weight. Writing meal calories/macros is a second, separate switch, and each meal is written once.
+Read data is shown on Today (swipe the macro cards to the second page) and never leaves the phone. iOS doesn't tell
+apps whether reading was allowed, so empty numbers can mean “no data yet” or “not allowed” — the app says so rather
+than guessing. **Disconnect** stops reading and writing; full revocation is in the Health app → Profile → Apps → Nutriq.
+
+The free Personal Team can sign HealthKit builds. Sign in with Apple needs a paid team: copy
+`ios/Flutter/Nutriq.example.xcconfig` to `ios/Flutter/Nutriq.xcconfig` (git-ignored) and switch the entitlements file
+there.
+
+---
+
+## On your own iPhone (free Personal Team)
 
 1. **Xcode → Settings → Accounts** → add your Apple ID.
-2. Open the iOS project:
-   ```bash
-   open ios/Runner.xcworkspace
-   ```
-   Select **Runner** → **Signing & Capabilities** → **Team** → *Your Name (Personal Team)*.
-   If Xcode says the bundle ID is taken, change `com.prodbyjake.nutriq` to something unique (e.g. `com.yourname.nutriq`).
-3. On the iPhone: plug it in with a cable, tap **Trust**, then turn on
-   **Settings → Privacy & Security → Developer Mode** (the phone restarts).
-4. Find the device and run a release build (release builds keep working after you unplug):
+2. `open ios/Runner.xcworkspace` → **Runner** → **Signing & Capabilities** → **Team** → *Your Name (Personal Team)*.
+3. Plug in the iPhone, tap **Trust**, turn on **Settings → Privacy & Security → Developer Mode**.
+4. Run a release build:
    ```bash
    flutter devices
    ```
    ```bash
-   flutter run --release -d <your-device-id>
+   flutter run --release -d <device-id> --dart-define-from-file=config/nutriq.json
    ```
-5. If iOS blocks the first launch: **Settings → General → VPN & Device Management** → trust your developer profile.
+5. If iOS blocks the first launch: **Settings → General → VPN & Device Management** → trust your profile.
 
-Free "Personal Team" builds **expire after 7 days** — run step 4 again to refresh.
-You can do the same for a friend who's sitting next to you: plug their iPhone in and repeat steps 3–5.
-
----
+Personal Team builds expire after 7 days — run step 4 again. Email confirmation links open the app directly on a
+real iPhone; on a Mac the browser can't open them, but the account is still confirmed and you can sign in.
 
 ## Share with friends
 
-### iPhone — TestFlight (recommended)
+- **iPhone — TestFlight** (Apple Developer Program, $99/yr): bump the build number in `pubspec.yaml`,
+  `flutter build ipa --release --dart-define-from-file=config/nutriq.json`, upload with **Transporter**, invite
+  testers in App Store Connect → TestFlight. Export compliance is pre-answered in `Info.plist`.
+- **Android:** install Android Studio, then `flutter build apk --release --dart-define-from-file=config/nutriq.json`
+  and share the APK, or use Google Play internal testing. The Android project (deep link, minSdk 26) hasn't been
+  built here because this Mac has no Android SDK.
 
-Needs the **Apple Developer Program** ($99/year).
+Native apps are distributed through TestFlight / the App Store and Google Play, not web hosts.
 
-1. Enroll at developer.apple.com, then set your paid team in Xcode (**Signing & Capabilities → Team**).
-2. In **App Store Connect → Apps → +**, create the app with bundle ID `com.prodbyjake.nutriq`
-   (App Store names are unique — if "Nutriq" is taken, use something like "Nutriq: Food Log").
-3. Each upload needs a higher build number. Bump it in `pubspec.yaml` (e.g. `version: 0.1.0+2`), then:
-   ```bash
-   flutter build ipa --release
-   ```
-4. Upload `build/ios/ipa/*.ipa` with Apple's **Transporter** app, or open
-   `build/ios/archive/Runner.xcarchive` in Xcode → **Distribute App → App Store Connect**.
-5. In **TestFlight**: fill in *Test Information* (description, feedback email).
-   - **Internal testers** (people on your App Store Connect team, up to 100) can install right away.
-   - **External testers** (anyone, by email or a **public link**) need a quick Beta App Review for the first build.
-   Export compliance is pre-answered (`ITSAppUsesNonExemptEncryption = NO` in `Info.plist`).
-6. Friends install the **TestFlight** app and open your invite. Builds expire after 90 days.
+### Questions for testers
 
-### Android
-
-Install Android Studio (it installs the Android SDK), then:
-
-```bash
-flutter doctor --android-licenses
-```
-
-- **Quickest:** build an APK and send it (friends allow "Install unknown apps"):
-  ```bash
-  flutter build apk --release
-  ```
-  File: `build/app/outputs/flutter-apk/app-release.apk`. (This uses Flutter's default debug signing — fine for friends, not for the Play Store.)
-- **Google Play internal testing** ($25 one-time Play Console fee): create an upload keystore
-  (see Flutter's "Build and release an Android app" guide), then upload an app bundle to
-  **Testing → Internal testing** and share the opt-in link:
-  ```bash
-  flutter build appbundle --release
-  ```
-
-> The Android project is set up (label, icons, dark launch screen, portrait), but it hasn't been built or run yet
-> because this Mac has no Android SDK.
-
----
-
-## Questions for testers
-
-Ask friends to answer these after a day or two of use (they can also rate scans in **Settings → Scan feedback**
-and tap **Copy feedback summary** to send you their ratings):
-
-1. Did the food suggestion look plausible?
+1. Did the food suggestion look plausible? (Remember: it's a demo sample.)
 2. Was it easy to correct the food and portion?
 3. Was the estimate label clear?
 4. Did the starting goal feel understandable and editable?
 5. Was the coach helpful and relevant?
 6. What felt confusing or slow?
 
-Remind them: in this build, photo results and coach replies are **demo samples**, so judge the *flow*, not the accuracy.
+Testers can rate scans in **Settings → Scan feedback** and copy a summary to send you.
 
 ---
 
-## Rename the app
-
-- In the app: `lib/app/app_config.dart` → `AppConfig.appName`.
-- Home-screen label: `ios/Runner/Info.plist` → `CFBundleDisplayName`, and
-  `android/app/src/main/AndroidManifest.xml` → `android:label`.
-- App icon: edit `lib/widgets/nutriq_mark.dart`, then regenerate:
-  ```bash
-  flutter test tool/generate_icon_test.dart && dart run flutter_launcher_icons
-  ```
-
----
-
-## How it works
+## How it's built
 
 ```
 lib/
-  app/            config (app name), theme tokens, AppScope (dependency injection), formatting
-  domain/         models, StartingPoint (calorie estimate + safeguards), day boundary, units
-  data/           LocalStore interface + SQLite implementation
-  services/       FoodAnalysisService + demo analyzer, CoachService + demo coach + CoachSafety, PhotoService
-  state/          ProfileController, MealLogController, CoachController (ChangeNotifier)
-  features/       onboarding, starting_point, today, scan, meal_editor, history, coach, settings, shell
-  widgets/        calorie gauge, macro summary, buttons, cards, controls
-test/             92 unit + widget tests (domain, services, SQLite store, controllers, screens, app flows)
-docs/superpowers/ design spec and implementation plan
+  app/        env (build-time config), session wiring, AppScope, theme tokens, formatting
+  domain/     models, StartingPoint + CalorieBounds (estimates and safeguards), references, streak, units
+  data/       LocalStore (SQLite, per-account files), sync engine, Supabase repository + mappers, local import
+  services/   auth (Supabase, Google, Apple), food analysis (demo), coach (demo + safety), Apple Health, photos
+  state/      session, profile, meal log, scans (drafts), sync, health, coach controllers
+  features/   onboarding, account, today, scan (camera), meal editor, history, coach, settings, shell
+  widgets/    design system: cards, rings, buttons, controls, spring sheet (NqSheetRoute), week strip
+supabase/     migration, delete-account Edge Function, local RLS tests
+test/         unit + widget tests (run `flutter test`)
+docs/         setup guide, design specs and plans
 ```
 
-**Starting point:** resting energy (Mifflin–St Jeor) × activity multiplier = estimated maintenance, then a modest
-goal adjustment shown as an editable range (rounded to 50 kcal). Sex is optional; if skipped, the midpoint constant is
-used and the extra uncertainty is shown. No targets for people under 18 or anyone who reports pregnancy,
-breastfeeding, or a relevant medical condition; a weight-loss range never goes below max(1,200, resting energy).
-The "How we estimated this" panel lists every assumption.
+**Motion:** sheets follow the finger 1:1, use the release velocity to decide whether to close, settle with
+critically damped springs (no bounce) and rubber-band past the top. Scroll views keep Flutter's native iOS physics.
+With **Reduce Motion** on, sheets and menus cross-fade instead of sliding.
 
-**Night shifts:** **Settings → Day starts at** (midnight–6 AM) decides which day a late-night meal counts toward.
-Any meal's date and time can also be edited.
+**Connecting real AI:** implement `FoodAnalysisService` / `CoachService` against **your own server** (which keeps
+the AI-provider key), set `isDemo` to `false`, and swap them in `lib/main.dart`. Add an explicit consent step before
+any photo is uploaded, and update the privacy text in Settings.
 
-**Privacy:** everything is stored on the phone (SQLite + app documents folder for photos). Coach chats aren't saved.
-**Settings → Privacy & data** can delete the profile, all meals, or everything.
-
-### Connecting a real AI backend
-
-1. Run a small server you control (e.g. a serverless function). It holds the AI-provider key, rate-limits requests,
-   and applies the same safety rules as `lib/services/coach/coach_safety.dart`.
-2. Suggested endpoints:
-   - `POST /analyze` (JPEG body) → `{ "items": [{ "name", "servingLabel", "servings", "kcal", "protein", "carbs", "fat", "confidence" }] }`
-   - `POST /coach` (`{ message, profile, today, recentDays }`) → `{ "text" }`
-3. Implement `FoodAnalysisService` and `CoachService` with HTTP calls to that server, set `isDemo` to `false`, and swap
-   them in `lib/main.dart`. The UI already shows a "Low confidence — check this" tag when `confidence < 0.6`.
-4. Before uploading photos, add a clear consent step and update the privacy copy in Settings.
+**Rename:** `lib/app/app_config.dart` (`AppConfig.appName`), `ios/Runner/Info.plist` (`CFBundleDisplayName`),
+`android/app/src/main/AndroidManifest.xml` (`android:label`).
 
 ---
 

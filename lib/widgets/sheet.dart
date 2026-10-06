@@ -2,17 +2,35 @@ import 'package:flutter/material.dart';
 
 import '../app/theme.dart';
 import 'buttons.dart';
+import 'spring_sheet.dart';
 
-/// Nutriq bottom sheet: rounded white sheet, drag handle, title, scrolling,
-/// keyboard-safe content.
-Future<T?> showNqSheet<T>(BuildContext context, {required String title, required Widget child, Widget? trailing}) {
-  return showModalBottomSheet<T>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (context) => SheetBody(title: title, trailing: trailing, child: child),
-  );
-}
+export 'spring_sheet.dart' show NqSheetRoute, NqSheetScope, NqMotion;
+
+/// Nutriq bottom sheet: rounded white sheet with a grab handle and title. It
+/// follows the finger and settles with springs (see [NqSheetRoute]).
+Future<T?> showNqSheet<T>(
+  BuildContext context, {
+  required String title,
+  required Widget child,
+  Widget? trailing,
+  bool dismissible = true,
+}) => showNqSheetWith<T>(
+  context,
+  dismissible: dismissible,
+  builder: (context) => SheetBody(title: title, trailing: trailing, child: child),
+);
+
+/// Shows any sheet body in an [NqSheetRoute]. [dismissible] false means it
+/// must be answered: no swipe or tap outside closes it.
+Future<T?> showNqSheetWith<T>(BuildContext context, {required WidgetBuilder builder, bool dismissible = true}) =>
+    Navigator.of(context).push(
+      NqSheetRoute<T>(
+        builder: builder,
+        dismissible: dismissible,
+        reduceMotion: MediaQuery.maybeDisableAnimationsOf(context) ?? false,
+        barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      ),
+    );
 
 class SheetBody extends StatelessWidget {
   const SheetBody({super.key, required this.title, required this.child, this.trailing});
@@ -26,6 +44,7 @@ class SheetBody extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
+        physics: NqSheetScope.physicsOf(context),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(NqSpace.page, 0, NqSpace.page, NqSpace.xxl),
         child: Column(

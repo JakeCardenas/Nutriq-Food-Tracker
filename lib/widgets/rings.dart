@@ -186,6 +186,7 @@ class MacroRingCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
         radius: 18,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             FittedBox(

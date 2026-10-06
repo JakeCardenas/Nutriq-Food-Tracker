@@ -33,14 +33,15 @@ class HealthSection extends StatelessWidget {
         return NqGroup(
           header: 'Apple Health',
           footer: connected
-              ? 'Read data stays on this phone and is never uploaded. To revoke access completely, open the '
-                    'Health app → your profile → Apps → Nutriq.'
+              ? 'Apple Health doesn’t tell apps whether you allowed reading, so empty numbers can mean “not '
+                    'allowed” or “no data yet”. Check Health → your profile → Apps → Nutriq. Read data stays on '
+                    'this phone and is never uploaded.'
               : 'Optional. Nutriq asks Apple Health for permission only when you connect. Data you allow stays '
                     'on this phone and is never uploaded.',
           children: [
             NqRow(
               icon: Icons.favorite_border_rounded,
-              title: connected ? 'Connected' : 'Connect Apple Health',
+              title: connected ? 'Reading turned on' : 'Connect Apple Health',
               subtitle: connected
                   ? (health.lastRead == null
                         ? 'Reading steps, workouts, energy and weight'

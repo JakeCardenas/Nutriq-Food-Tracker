@@ -270,4 +270,52 @@ void main() {
       expect(localPhotos.deletedAll, isTrue);
     });
   });
+
+  group('keeping devices in step', () {
+    test('an account still signed in at launch pulls changes from other devices right away', () async {
+      final server = clouds.putIfAbsent('alice', FakeCloud.new)
+        ..serverWrite(SyncEntity.meal, 'from-ipad', _meal('from-ipad').toJson(), 5000);
+      final restored = SessionController(
+        auth: FakeAuthService(current: _alice),
+        buildSession: (user) => assembleSession(
+          user: user,
+          store: file(user?.id ?? 'local'),
+          photos: FakePhotoService(),
+          cloud: user == null ? null : server,
+          services: SessionServices(
+            analysis: DemoFoodAnalysisService(delay: Duration.zero),
+            coach: DemoCoachService(replyDelay: Duration.zero),
+            health: const UnsupportedHealthService(),
+          ),
+          syncDebounce: Duration.zero,
+        ),
+        openLocalStore: () async => file('local'),
+        localPhotos: FakePhotoService(),
+      );
+      addTearDown(restored.dispose);
+      await restored.start();
+      await restored.settle();
+      // No edits and no manual sync: the launch itself must trigger the pull.
+      for (var i = 0; i < 20; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(restored.session!.log.meals.map((m) => m.id), ['from-ipad']);
+    });
+
+    test('returning to the app pulls changes made elsewhere', () async {
+      auth.signIn(_alice);
+      await sessions.settle();
+      await sessions.session!.sync!.syncNow();
+      expect(sessions.session!.log.meals, isEmpty);
+
+      clouds['alice']!.serverWrite(SyncEntity.meal, 'from-ipad', _meal('from-ipad').toJson(), 5000);
+      await sessions.appResumed();
+      expect(sessions.session!.log.meals.map((m) => m.id), ['from-ipad']);
+    });
+
+    test('returning to the app in local-only mode does nothing', () async {
+      await sessions.appResumed();
+      expect(sessions.session!.sync, isNull);
+    });
+  });
 }

@@ -7,6 +7,7 @@ import '../../app/app_scope.dart';
 import '../../app/theme.dart';
 import '../../widgets/adaptive.dart';
 import '../../widgets/pressable.dart';
+import '../../widgets/spring_sheet.dart';
 import '../coach/coach_screen.dart';
 import '../history/history_screen.dart';
 import '../scan/meal_flows.dart';
@@ -54,7 +55,6 @@ class _HomeShellState extends State<HomeShell> {
 
   void _select(int i) {
     if (i == _index) return;
-    HapticFeedback.selectionClick();
     FocusScope.of(context).unfocus();
     setState(() => _index = i);
   }
@@ -259,20 +259,29 @@ class _TabButton extends StatelessWidget {
 }
 
 /// The “+” menu: four ways to log, shown as tiles above the button.
+/// The tiles grow up and out of the "+" button on a critically damped spring
+/// and fold back into it when closed (same path both ways). With Reduce Motion
+/// they simply fade.
 Future<void> showAddMenu(BuildContext context) {
+  final reduceMotion = MediaQuery.of(context).disableAnimations;
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Close',
     barrierColor: Colors.black.withValues(alpha: 0.28),
-    transitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: Duration(milliseconds: reduceMotion ? 150 : 420),
     pageBuilder: (dialogContext, _, _) => _AddMenu(hostContext: context),
     transitionBuilder: (context, animation, _, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+      if (reduceMotion) return FadeTransition(opacity: animation, child: child);
+      final spring = CurvedAnimation(parent: animation, curve: const NqSpringCurve());
       return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(curved),
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0, 0.5, curve: Curves.easeOut),
+        ),
+        child: ScaleTransition(
+          alignment: const Alignment(0.85, 1),
+          scale: Tween(begin: 0.82, end: 1.0).animate(spring),
           child: child,
         ),
       );

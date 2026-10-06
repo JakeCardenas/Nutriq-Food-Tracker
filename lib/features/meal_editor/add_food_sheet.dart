@@ -11,12 +11,7 @@ import 'food_item_form.dart';
 
 /// Add a food: pick from My foods / recent foods, or enter it manually.
 Future<FoodItem?> showAddFoodSheet(BuildContext context, {bool startManual = false}) {
-  return showModalBottomSheet<FoodItem>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (context) => _AddFoodSheet(startManual: startManual),
-  );
+  return showNqSheetWith<FoodItem>(context, builder: (context) => _AddFoodSheet(startManual: startManual));
 }
 
 class _AddFoodSheet extends StatefulWidget {
@@ -74,6 +69,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
             ),
             Expanded(
               child: ListView(
+                physics: NqSheetScope.physicsOf(context),
                 padding: const EdgeInsets.fromLTRB(NqSpace.page, 0, NqSpace.page, NqSpace.xxl),
                 children: [
                   _ManualRow(onTap: () => setState(() => _manual = true), query: _query),

@@ -70,14 +70,18 @@ class SupabaseCloudRepository implements CloudRepository {
     try {
       await _client.functions.invoke('delete-account', method: HttpMethod.post);
     } on FunctionException catch (e) {
-      if (e.status == 404) {
-        throw const CloudNotConfiguredException(
-          'Account deletion isn’t set up on the server yet (deploy the delete-account function).',
-        );
-      }
-      throw CloudRejectedException('Account deletion failed (${e.status}).');
+      throw deleteAccountError(e.status);
     }
   });
+
+  /// What a failed `delete-account` call means for the person.
+  static Exception deleteAccountError(int status) => switch (status) {
+    401 || 403 => const CloudAuthException(),
+    404 => const CloudNotConfiguredException(
+      'Account deletion isn’t set up on the server yet (deploy the delete-account function).',
+    ),
+    _ => CloudRejectedException('Account deletion failed (error $status).'),
+  };
 
   static SyncRecord _fromRow(SyncEntity entity, Map<String, Object?> row) => switch (entity) {
     SyncEntity.profile => CloudMappers.profileFromRow(row),
