@@ -74,8 +74,10 @@ class SupabaseCloudRepository implements CloudRepository {
     }
   });
 
-  /// What a failed `delete-account` call means for the person.
+  /// What a failed `delete-account` call means for the person. Status 0 means
+  /// no response at all (the request never reached the server).
   static Exception deleteAccountError(int status) => switch (status) {
+    0 => const CloudOfflineException(),
     401 || 403 => const CloudAuthException(),
     404 => const CloudNotConfiguredException(
       'Account deletion isn’t set up on the server yet (deploy the delete-account function).',

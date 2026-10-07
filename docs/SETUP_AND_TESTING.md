@@ -13,7 +13,7 @@ cd ~/Documents/Nutriq
   key, and OAuth **client IDs**.
 - Never put a **secret / service-role key**, a **Google client secret**, an **Apple `.p8` private key** or an
   **AI-provider key** in the app, in `config/nutriq.json`, in chat, or in git. Secrets belong only in the Supabase,
-  Google or Apple dashboards.
+  Google or Apple dashboards (the Anthropic key goes in **Supabase → Edge Functions → Secrets**).
 - `config/nutriq.json` and `ios/Flutter/Nutriq.xcconfig` are git-ignored. Keep it that way.
 
 ---
@@ -58,8 +58,10 @@ You'll see the welcome screen. Go through onboarding or tap **Skip setup**. Ever
 device. Settings shows “On this phone only — accounts and sync aren't set up in this build.”
 
 The Simulator has no camera: **+ → Scan food** shows “Camera isn't available” with **Choose from library**.
-Food recognition is a **demo** — it returns a sample meal, not an analysis of your photo, and says “Demo” on the
-camera, on the scan card and on the review screen.
+On iPhone, photos are recognised **on the phone** with Apple's built-in recognizer: Today shows “Foods found” with
+what it saw (or “No food found”), and the review lets you fix amounts and **describe anything it missed** (“century
+tuna and 2 cups of rice” → **Add foods**). **+ → Describe meal** works without a photo. The recognizer sees kinds of
+food, not brands or portions.
 
 ---
 
@@ -162,7 +164,54 @@ You never copy the service-role key: Supabase gives it to the function automatic
 
 ---
 
-## 7. Sign in with Google and Apple (optional)
+## 7. AI coach (optional)
+
+The coach can answer with Anthropic's **Claude Sonnet 5.5**. The app never holds the AI key: it calls the `coach`
+Edge Function, which keeps the key in Supabase, checks the person's sign-in, applies Nutriq's safety rules and
+allows **30 AI messages per person per day**. Anthropic bills you for usage, so set a spend limit.
+
+It's **off by default**: until you finish these steps and set `AI_COACH_ENABLED`, nobody sees the AI coach offer
+and everyone gets the scripted coach.
+
+1. **Get an API key.** Go to console.anthropic.com and sign in. Add a little credit and set a monthly **spend limit**
+   in the billing/limits settings. Then **API Keys → Create Key**, name it `nutriq-coach`, and copy it.
+   Paste it only in the next step — not in the app, a file, git or chat.
+2. **Store it in Supabase.** Your project → **Edge Functions → Secrets** → add a secret named
+   `ANTHROPIC_API_KEY` with the key as its value → **Save**.
+3. **Create the daily allowance.** **SQL Editor → New query.** Copy the file:
+   ```bash
+   pbcopy < supabase/migrations/20261007000000_coach_usage.sql
+   ```
+   Paste (⌘V) — the first line reads `-- Nutriq AI coach: daily message allowance.` — and click **Run**. You should
+   see **“Success. No rows returned.”** Run it once.
+4. **Deploy the function.** **Edge Functions → Deploy a new function → Via Editor**, name it `coach` (exactly).
+   Copy the code:
+   ```bash
+   pbcopy < supabase/functions/coach/index.ts
+   ```
+   Paste it over the editor's contents — the first line reads `// Supabase Edge Function: coach` — and click
+   **Deploy function**. On the function's **Settings** tab turn **off** “Verify JWT with legacy secret” → **Save**.
+   (CLI: `supabase functions deploy coach --no-verify-jwt`.)
+5. **Turn it on in the app.** In `config/nutriq.json` set `"AI_COACH_ENABLED": true`, then rebuild.
+6. **Try it.** Run the app signed in → **Coach** → **Turn on AI coach** → tap “Suggest a balanced dinner for my
+   goal.” The answer streams in and is labelled “AI coach · can make mistakes”.
+
+**What is sent:** the question, the last few chat messages, and a summary: goal, age group (not exact age), calorie
+range and protein reference, body weight for adults, today's meals (food names with estimated calories and macros),
+the last 7 days' totals and up to 20 saved foods. Never photos, notes, Apple Health data, sex or height. Nothing is
+stored except a daily count per person (`coach_usage`), which is deleted with the account.
+
+**Safety:** the phone answers eating-disorder cues, extreme restriction, medical and “how fast will I lose…”
+questions itself, without calling the AI. The function repeats those checks, also reads the person's own synced
+profile (so under-18 and pregnancy/medical safeguards still apply), and gives Claude a safety-first system prompt.
+
+**Cost and model:** the limit is `v_limit` in the migration's `nutriq_coach_take_turn()` (change it with a new
+migration) and `DAILY_LIMIT` in the function. The model is `MODEL` at the top of the function; for lower cost use
+`claude-haiku-4-5-20251001`.
+
+---
+
+## 8. Sign in with Google and Apple (optional)
 
 The buttons stay hidden until these are configured. Nothing here goes in git.
 
@@ -198,7 +247,7 @@ a one-time notice about the new sign-in method.
 
 ---
 
-## 8. Apple Health (iOS)
+## 9. Apple Health (iOS)
 
 Optional and off by default; it has nothing to do with Supabase.
 
@@ -214,7 +263,7 @@ The free Personal Team can sign HealthKit builds. Android Health Connect isn't s
 
 ---
 
-## 9. Testing checklist and troubleshooting
+## 10. Testing checklist and troubleshooting
 
 **Automated**
 
@@ -231,19 +280,30 @@ flutter test
 ```
 
 ```bash
+node --test supabase/tests/coach_function_test.ts
+```
+
+```bash
 flutter build ios --release --no-codesign --dart-define-from-file=config/nutriq.json
 ```
 
 **By hand (Simulator or iPhone)**
 
 - [ ] Onboarding: answers save; an under-18 age gives no calorie targets; “Pregnant” gives no calculated targets.
-- [ ] Today: + → Photo library → “Estimate ready” card → review shows “Demo result” → **Log meal**.
+- [ ] iPhone: photo of a plate of rice and eggs → Today says “Foods found · White rice · Egg” → review → fix the
+      portions → **Log meal**. A photo with no food → “No food found” → describe it.
+- [ ] + → Describe meal → type something Nutriq doesn't know → it's listed under “Not found”, nothing is guessed.
+- [ ] Close the describe screen after picking a photo → nothing is logged and the photo isn't kept.
 - [ ] Sheets: drag one down slowly and let go before halfway — it settles back; flick it down — it closes.
 - [ ] Settings → Reduce Motion (iOS Settings → Accessibility → Motion) on: sheets fade instead of sliding.
 - [ ] Signed in: log a meal → “Synced”; delete it → it disappears from Supabase too.
 - [ ] Airplane mode: log a meal → chip shows “Offline”; back online → syncs.
 - [ ] Two devices / two installs: edit the same meal → the older edit appears under Settings → Account to restore.
 - [ ] Sign out with unsynced changes → the app warns first.
+- [ ] Coach, signed in: “Try the AI coach?” → **Not now** → replies say “Demo coach · scripted”. Settings → **AI
+      coach** on (asks first) → replies stream in, labelled “AI coach · can make mistakes”.
+- [ ] Coach: “how do I make myself throw up” → a caring safety reply that points to real support, instantly.
+- [ ] Coach in airplane mode → scripted reply that says you're offline.
 
 **Troubleshooting**
 
@@ -254,7 +314,12 @@ flutter build ios --release --no-codesign --dart-define-from-file=config/nutriq.
 | Email link says “can't open page” on a Mac | Expected; sign in in the app. On an iPhone the link opens Nutriq |
 | Delete account says “Nothing was deleted … not deployed” | Deploy the function (section 6) |
 | Delete account says “Please sign in again” | The session expired: sign out and in, then retry |
-| Google button missing | Both `GOOGLE_*_CLIENT_ID` values must be set (section 7) |
+| Google button missing | Both `GOOGLE_*_CLIENT_ID` values must be set (section 8) |
 | Apple button missing | iOS only, and `APPLE_SIGN_IN_ENABLED` must be `true` with the paid-team entitlements |
 | Apple Health numbers stay “—” | Check Health app → Profile → Apps → Nutriq; add sample data on the Simulator |
 | Personal Team app stops opening after 7 days | Re-run it from Xcode/Flutter (free provisioning expires) |
+| No “Try the AI coach?” card | `AI_COACH_ENABLED` isn't `true` in `config/nutriq.json`, or you're not signed in |
+| Coach: “isn't set up on the server yet” | Do section 7: the `ANTHROPIC_API_KEY` secret, the coach migration and the `coach` function |
+| Coach: “Sign in again to use the AI coach” | The session expired: sign out and back in |
+| Coach: “couldn't answer just now” | Check the `coach` function's **Logs** in Supabase and your Anthropic credit/spend limit |
+| Coach: “You've used today's 30 AI messages” | The daily allowance; it resets at midnight UTC |

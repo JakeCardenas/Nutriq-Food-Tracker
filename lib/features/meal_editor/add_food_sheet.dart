@@ -3,13 +3,14 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../app/format.dart';
 import '../../app/theme.dart';
+import '../../domain/food_catalog.dart';
 import '../../domain/ids.dart';
 import '../../domain/models/food_item.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/sheet.dart';
 import 'food_item_form.dart';
 
-/// Add a food: pick from My foods / recent foods, or enter it manually.
+/// Add a food: pick from My foods / recent foods / Nutriq's food list, or enter it manually.
 Future<FoodItem?> showAddFoodSheet(BuildContext context, {bool startManual = false}) {
   return showNqSheetWith<FoodItem>(context, builder: (context) => _AddFoodSheet(startManual: startManual));
 }
@@ -42,6 +43,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     final saved = log.savedFoods.map((s) => s.item).where(matches).toList();
     final savedNames = saved.map((f) => f.name.toLowerCase()).toSet();
     final recent = log.recentFoods().where((f) => matches(f) && !savedNames.contains(f.name.toLowerCase())).toList();
+    final shown = {...savedNames, for (final f in recent) f.name.toLowerCase()};
+    final catalog = [
+      for (final food in FoodCatalog.search(q, limit: 12))
+        if (!shown.contains(food.name.toLowerCase())) food.item(),
+    ];
 
     return SizedBox(
       height: MediaQuery.sizeOf(context).height * 0.8,
@@ -59,7 +65,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                   const SizedBox(height: NqSpace.md),
                   TextField(
                     decoration: const InputDecoration(
-                      hintText: 'Search My foods and recent',
+                      hintText: 'Search foods',
                       prefixIcon: Icon(Icons.search_rounded, color: NqColors.textTertiary),
                     ),
                     onChanged: (v) => setState(() => _query = v),
@@ -81,12 +87,16 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                     _header('Recent'),
                     for (final f in recent) _FoodPick(item: f, onTap: () => _pick(f)),
                   ],
-                  if (saved.isEmpty && recent.isEmpty)
+                  if (catalog.isNotEmpty) ...[
+                    _header('Food list'),
+                    for (final f in catalog) _FoodPick(item: f, onTap: () => _pick(f)),
+                  ],
+                  if (saved.isEmpty && recent.isEmpty && catalog.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: NqSpace.xxl),
                       child: Text(
                         q.isEmpty
-                            ? 'Foods you save or log will show up here for quick re-use.'
+                            ? 'Search Nutriq’s food list, or pick foods you’ve saved or logged before.'
                             : 'No matches. Enter it manually — it only takes a moment.',
                         style: NqText.callout,
                         textAlign: TextAlign.center,

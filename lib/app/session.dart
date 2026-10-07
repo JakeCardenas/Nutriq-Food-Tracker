@@ -5,6 +5,7 @@ import '../data/local_store.dart';
 import '../data/sqlite_local_store.dart';
 import '../data/sync_engine.dart';
 import '../services/auth/auth_service.dart';
+import '../services/coach/coach_backend.dart';
 import '../services/coach/coach_service.dart';
 import '../services/food_analysis/food_analysis_service.dart';
 import '../services/health/health_service.dart';
@@ -20,10 +21,15 @@ enum SessionMode { local, account }
 
 /// Services shared by every session (they hold no user data).
 class SessionServices {
-  const SessionServices({required this.analysis, required this.coach, required this.health});
+  const SessionServices({required this.analysis, required this.coach, required this.health, this.coachBackend});
   final FoodAnalysisService analysis;
+
+  /// The scripted coach (always available, and the AI coach's fallback).
   final CoachService coach;
   final HealthService health;
+
+  /// Reaches the AI coach. Only signed-in sessions get it.
+  final CoachBackend? coachBackend;
 }
 
 /// Everything the UI needs for one mode — local-only, or one signed-in
@@ -99,7 +105,12 @@ Future<AppSession> assembleSession({
 }) async {
   final profile = ProfileController(store);
   final log = MealLogController(store, dayStartHour: () => profile.settings.dayStartHour, deletePhoto: photos.delete);
-  final coach = CoachController(services.coach, CoachController.contextFrom(profile, log));
+  final coach = CoachController(
+    services.coach,
+    CoachController.contextFrom(profile, log),
+    ai: user == null ? null : services.coachBackend,
+    store: store,
+  );
   final scans = ScanController(store: store, analysis: services.analysis, photos: photos);
   final health = HealthController(service: services.health, store: store);
   final cleanups = <void Function()>[];
@@ -108,6 +119,7 @@ Future<AppSession> assembleSession({
   await log.load();
   await scans.load();
   await health.load();
+  await coach.load();
 
   final healthSub = log.mealSaved.listen(health.onMealSaved);
   cleanups.add(healthSub.cancel);

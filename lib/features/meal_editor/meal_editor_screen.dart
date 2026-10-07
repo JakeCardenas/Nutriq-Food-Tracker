@@ -6,6 +6,7 @@ import '../../app/format.dart';
 import '../../app/theme.dart';
 import '../../domain/day_boundary.dart';
 import '../../domain/ids.dart';
+import '../../domain/meal_description.dart';
 import '../../domain/models/food_item.dart';
 import '../../domain/models/meal.dart';
 import '../../domain/models/nutrition.dart';
@@ -17,6 +18,7 @@ import '../../widgets/pressable.dart';
 import '../../widgets/sheet.dart';
 import '../../widgets/surfaces.dart';
 import 'add_food_sheet.dart';
+import 'describe_meal_card.dart';
 import 'feedback_prompt.dart';
 import 'food_item_form.dart';
 
@@ -43,6 +45,7 @@ class MealEditorScreen extends StatefulWidget {
     this.openAddFood = false,
     this.startManualEntry = false,
     this.emptyResult = false,
+    this.describeFirst = false,
     this.initialLoggedAt,
     this.draftId,
   });
@@ -63,6 +66,9 @@ class MealEditorScreen extends StatefulWidget {
 
   /// True when analysis returned no foods — shows "add what you ate".
   final bool emptyResult;
+
+  /// Focuses "What did you eat?" on arrival (a new meal with no foods yet).
+  final bool describeFirst;
 
   /// Pre-set date/time for a new meal (e.g. adding to a past day).
   final DateTime? initialLoggedAt;
@@ -88,6 +94,9 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
   bool _typeTouched = false;
   bool _changed = false;
   bool _saving = false;
+
+  /// Parts of the last description that aren't in the food list.
+  List<String> _unmatched = const [];
 
   bool get _isNew => widget.existing == null;
   bool get _isDemo => widget.source == MealSource.demoScan;
@@ -126,6 +135,17 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
   Future<void> _addFood({bool startManual = false}) async {
     final item = await showAddFoodSheet(context, startManual: startManual);
     if (item != null) _update(() => _items = [..._items, item]);
+  }
+
+  void _onDescribed(MealParse result) {
+    if (result.items.isEmpty) {
+      setState(() => _unmatched = result.unmatched);
+      return;
+    }
+    _update(() {
+      _items = [..._items, ...result.items];
+      _unmatched = result.unmatched;
+    });
   }
 
   Future<void> _editItem(FoodItem item) async {
@@ -458,6 +478,16 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
             'so you can try the flow. It didn’t analyze your photo. Edit the ingredients to match what you ate.',
       ),
     ],
+    if (_isNew && widget.source == MealSource.scan && widget.initialItems.isNotEmpty) ...[
+      const SizedBox(height: 14),
+      const NoticeCard(
+        icon: Icons.fact_check_outlined,
+        title: 'Check what was found',
+        message:
+            'Photo recognition sees kinds of food, not brands or amounts. Adjust each portion, and describe '
+            'anything it missed below.',
+      ),
+    ],
     if (widget.emptyResult) ...[
       const SizedBox(height: 14),
       const NoticeCard(
@@ -471,7 +501,24 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
       top: NqSpace.xl,
       trailing: QuietButton(label: 'Add', icon: Icons.add_rounded, onPressed: _addFood),
     ),
-    if (_items.isEmpty)
+    if (_unmatched.isNotEmpty) ...[
+      NoticeCard(
+        icon: Icons.help_outline_rounded,
+        title: 'Not found',
+        message:
+            'Not in Nutriq’s food list: ${_unmatched.map((u) => '“$u”').join(', ')}. '
+            'Tap Add to enter ${_unmatched.length == 1 ? 'it' : 'them'} by hand.',
+        onDismiss: () => setState(() => _unmatched = const []),
+      ),
+      const SizedBox(height: 10),
+    ],
+    if (_items.isEmpty && _isNew)
+      DescribeMealCard(
+        title: widget.photoPath != null ? 'What’s in this photo?' : 'What did you eat?',
+        autofocus: widget.describeFirst,
+        onParsed: _onDescribed,
+      )
+    else if (_items.isEmpty)
       Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(color: NqColors.fill, borderRadius: BorderRadius.circular(NqRadius.tile)),
@@ -515,10 +562,14 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
           ),
         ),
       Text(
-        'Tap an ingredient to rename it or fix its nutrition. Swipe left to remove. Photo estimates can miss oils, '
-        'sauces and portion sizes.',
+        'Tap an ingredient to rename it or fix its nutrition. Swipe left to remove. Estimates can miss oils, '
+        'sauces and exact portions.',
         style: NqText.caption,
       ),
+      if (_isNew && widget.draftId != null) ...[
+        const SizedBox(height: 14),
+        DescribeMealCard(title: 'Anything missing? Describe it', onParsed: _onDescribed),
+      ],
     ],
     _DayHint(loggedAt: _loggedAt),
     if (!_isNew && widget.existing!.source != MealSource.manual) ...[

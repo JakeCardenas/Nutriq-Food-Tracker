@@ -16,6 +16,10 @@ abstract final class Env {
   static const googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
   static const appleSignInEnabled = bool.fromEnvironment('APPLE_SIGN_IN_ENABLED');
 
+  /// Offer the AI coach to signed-in people. Turn on only after the `coach`
+  /// Edge Function is deployed with its key (docs/SETUP_AND_TESTING.md §7).
+  static const aiCoachEnabled = bool.fromEnvironment('AI_COACH_ENABLED');
+
   /// True when real Supabase values were supplied (not the example placeholders).
   static bool get cloudConfigured =>
       supabaseUrl.startsWith('https://') &&

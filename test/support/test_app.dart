@@ -12,6 +12,7 @@ import 'package:nutriq/domain/models/meal.dart';
 import 'package:nutriq/domain/models/settings.dart';
 import 'package:nutriq/domain/models/user_profile.dart';
 import 'package:nutriq/services/auth/auth_service.dart';
+import 'package:nutriq/services/coach/coach_backend.dart';
 import 'package:nutriq/services/coach/demo_coach_service.dart';
 import 'package:nutriq/services/food_analysis/demo_food_analysis_service.dart';
 import 'package:nutriq/services/food_analysis/food_analysis_service.dart';
@@ -73,12 +74,14 @@ class TestDeps {
     HealthService? health,
     AuthService? auth,
     CloudRepository? cloud,
+    CoachBackend? coachBackend,
   }) async {
     final store = MemoryLocalStore(profile: profile, settings: settings, meals: meals);
     final photos = FakePhotoService();
     final services = SessionServices(
       analysis: analysis ?? DemoFoodAnalysisService(delay: Duration.zero),
       coach: DemoCoachService(replyDelay: Duration.zero),
+      coachBackend: coachBackend,
       health: health ?? const UnsupportedHealthService(),
     );
     final authService = auth ?? const DisabledAuthService();

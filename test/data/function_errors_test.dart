@@ -12,6 +12,10 @@ void main() {
     expect(SupabaseCloudRepository.deleteAccountError(404), isA<CloudNotConfiguredException>());
   });
 
+  test('no response at all (offline) is reported as offline', () {
+    expect(SupabaseCloudRepository.deleteAccountError(0), isA<CloudOfflineException>());
+  });
+
   test('other failures are reported as rejected', () {
     expect(SupabaseCloudRepository.deleteAccountError(500), isA<CloudRejectedException>());
   });

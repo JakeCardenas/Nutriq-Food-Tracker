@@ -67,7 +67,7 @@ void main() {
 
     await tester.drag(find.text('Brown rice').last, const Offset(-600, 0));
     await tester.pumpAndSettle();
-    expect(find.text('No ingredients yet'), findsOneWidget);
+    expect(find.byKey(const ValueKey('describe-field')), findsOneWidget, reason: 'empty: describe what you ate');
     await tester.tap(find.text('Log meal'));
     await tester.pumpAndSettle();
     expect(deps.log.meals, isEmpty);

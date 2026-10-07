@@ -29,6 +29,8 @@ class _FlakyAnalysis implements FoodAnalysisService {
   @override
   bool get isDemo => false;
   @override
+  bool get recognizesPhotos => true;
+  @override
   String get label => 'flaky';
   @override
   Future<FoodAnalysisResult> analyze(Uint8List imageBytes) async {

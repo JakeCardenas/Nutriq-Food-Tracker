@@ -11,6 +11,7 @@ import '../../widgets/adaptive.dart';
 import '../../widgets/controls.dart';
 import '../../widgets/sheet.dart';
 import '../../widgets/surfaces.dart';
+import '../coach/ai_consent.dart';
 import '../goals/goal_actions.dart';
 import '../shell/home_shell.dart';
 import 'account_section.dart';
@@ -121,6 +122,26 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ],
             ),
+            if (scope.coach.aiAvailable)
+              ListenableBuilder(
+                listenable: scope.coach,
+                builder: (context, _) => NqGroup(
+                  header: 'Coach',
+                  footer:
+                      'Sends your questions, goals and a summary of recent meals to Claude (Anthropic) through '
+                      'Nutriq’s server. Never photos or Apple Health data. Up to 30 messages a day.',
+                  children: [
+                    NqRow(
+                      icon: Icons.auto_awesome_outlined,
+                      title: 'AI coach',
+                      trailing: Switch.adaptive(
+                        value: scope.coach.aiEnabled,
+                        onChanged: (on) => setAiCoachFromSettings(context, scope.coach, on),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             NqGroup(
               header: 'Privacy & data',
               footer: account
@@ -138,10 +159,14 @@ class SettingsScreen extends StatelessWidget {
                         ? 'In your account (Supabase, protected so only you can read it): your profile and goals, '
                               'meals and their foods, saved foods and scan ratings.\n\nOnly on this phone: meal photos, '
                               'Apple Health data, scans that are still drafts, and coach chats (which aren’t saved at '
-                              'all). Demo analysis and the demo coach run on the device.'
+                              'all). Photo recognition (Apple’s built-in recognizer), describing meals (Nutriq’s food '
+                              'list) and the demo coach all run on this phone.\n\nIf you turn on the AI '
+                              'coach, each question is sent with your goals and a summary of recent meals to Anthropic '
+                              '(Claude) through Nutriq’s server to get an answer. Nutriq keeps only a daily count of '
+                              'messages, never what they say.'
                         : 'On this phone only: your optional profile and goals, meals and their photos, saved foods '
-                              'and scan ratings. Coach chats aren’t saved. Nothing is sent anywhere — demo analysis '
-                              'and the demo coach run on the device.',
+                              'and scan ratings. Coach chats aren’t saved. Nothing is sent anywhere — photo recognition, '
+                              'describing meals and the demo coach all run on this phone.',
                   ),
                 ),
                 NqRow(
@@ -196,8 +221,15 @@ class SettingsScreen extends StatelessWidget {
                   '${AppConfig.estimateDisclaimer} ${AppConfig.appName} doesn’t diagnose or treat any '
                   'condition. For medical or dietary advice, talk to a qualified professional.',
               children: [
-                NqRow(title: 'Food analysis', value: scope.analysis.isDemo ? 'Demo · sample results' : 'Connected'),
-                NqRow(title: 'Coach', value: scope.coach.service.isDemo ? 'Demo · scripted' : 'Connected'),
+                NqRow(
+                  title: 'Food analysis',
+                  value: scope.analysis.isDemo ? 'Demo · sample results' : scope.analysis.label,
+                ),
+                ListenableBuilder(
+                  listenable: scope.coach,
+                  builder: (context, _) =>
+                      NqRow(title: 'Coach', value: scope.coach.aiEnabled ? 'AI · Claude' : 'Demo · scripted'),
+                ),
                 NqRow(title: 'Accounts & sync', value: scope.auth.isConfigured ? 'Configured' : 'Not set up'),
                 const NqRow(title: 'Version', value: AppConfig.version),
               ],

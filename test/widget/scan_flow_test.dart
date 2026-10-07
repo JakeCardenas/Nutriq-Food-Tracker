@@ -17,6 +17,8 @@ class _FailingAnalysis implements FoodAnalysisService {
   @override
   bool get isDemo => false;
   @override
+  bool get recognizesPhotos => true;
+  @override
   String get label => 'Failing test analysis';
   @override
   Future<FoodAnalysisResult> analyze(Uint8List imageBytes) async {
@@ -35,7 +37,7 @@ void main() {
     final deps = await TestDeps.create();
     await deps.pumpApp(tester);
     await _openAddMenu(tester);
-    for (final label in ['Scan food', 'Photo library', 'Log manually', 'My foods']) {
+    for (final label in ['Scan food', 'Photo library', 'Describe meal', 'My foods']) {
       expect(find.text(label), findsOneWidget);
     }
     expect(find.textContaining('Barcode'), findsNothing);
@@ -146,11 +148,16 @@ void main() {
     expect(deps.scans.drafts, isEmpty);
   });
 
-  testWidgets('Log manually opens the ingredient form', (tester) async {
+  testWidgets('Describe meal still lets you enter a food by hand', (tester) async {
     final deps = await TestDeps.create();
     await deps.pumpApp(tester);
     await _openAddMenu(tester);
-    await tester.tap(find.text('Log manually'));
+    await tester.tap(find.text('Describe meal'));
+    await tester.pumpAndSettle();
+    expect(find.text('What did you eat?'), findsOneWidget);
+    await tester.tap(find.text('Add').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enter manually'));
     await tester.pumpAndSettle();
     expect(find.text('Add an ingredient'), findsOneWidget);
     await tester.enterText(find.widgetWithText(TextFormField, 'Food name'), 'Oatmeal');

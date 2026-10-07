@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/theme.dart';
+import '../../services/coach/coach_payload.dart';
 import '../../services/coach/coach_service.dart';
 import '../../widgets/labels.dart';
 import '../../widgets/pressable.dart';
 import '../shell/home_shell.dart';
+import 'ai_consent.dart';
 
 /// Chat with the coach. Messages live in memory only.
 class CoachScreen extends StatefulWidget {
@@ -19,6 +22,7 @@ class _CoachScreenState extends State<CoachScreen> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   int _seenDraft = -1;
+  String? _seenStreaming;
 
   @override
   void dispose() {
@@ -36,6 +40,15 @@ class _CoachScreenState extends State<CoachScreen> {
     _scrollToEnd();
     await sending;
     _scrollToEnd();
+  }
+
+  /// Keeps a streaming reply in view, unless the person scrolled up to read.
+  void _followStream() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.maxScrollExtent - position.pixels < 160) position.jumpTo(position.maxScrollExtent);
+    });
   }
 
   void _scrollToEnd() {
@@ -62,7 +75,15 @@ class _CoachScreenState extends State<CoachScreen> {
             _input.selection = TextSelection.collapsed(offset: _input.text.length);
           }
         }
+        if (coach.streamingText != _seenStreaming) {
+          _seenStreaming = coach.streamingText;
+          if (_seenStreaming != null) _followStream();
+        }
+        final scope = AppScope.of(context);
         final messages = coach.messages;
+        final ai = coach.aiEnabled;
+        final showConsent = coach.needsAiChoice;
+        final streaming = coach.streamingText;
         // The shell hides its tab bar while the keyboard is up.
         final keyboard = View.of(context).viewInsets.bottom > 0;
         final top = MediaQuery.paddingOf(context).top;
@@ -74,34 +95,58 @@ class _CoachScreenState extends State<CoachScreen> {
               child: Row(
                 children: [
                   const Text('Coach', style: NqText.largeTitle),
-                  if (coach.service.isDemo) ...[const SizedBox(width: 10), const DemoBadge(label: 'Demo coach')],
+                  const SizedBox(width: 10),
+                  if (ai) const _AiBadge() else const DemoBadge(label: 'Demo coach'),
                   const Spacer(),
                   if (messages.isNotEmpty)
                     IconButton(
                       tooltip: 'Clear conversation',
                       icon: const Icon(Icons.refresh_rounded, color: NqColors.ink),
-                      onPressed: coach.clear,
+                      onPressed: coach.isReplying ? null : coach.clear,
                     ),
                 ],
               ),
             ),
-            if (coach.service.isDemo)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(NqSpace.page, 4, NqSpace.page, NqSpace.sm),
-                child: Text(
-                  'Scripted replies that use your log — not live AI, and not medical advice. Chats aren’t saved.',
-                  style: NqText.caption,
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(NqSpace.page, 4, NqSpace.page, NqSpace.sm),
+              child: Text(
+                ai
+                    ? 'Powered by Claude (Anthropic). Uses your goals and logged meals — numbers are estimates, '
+                          'and this isn’t medical advice. Chats aren’t saved.'
+                    : [
+                        'Scripted replies that use your log — not live AI, and not medical advice. Chats aren’t saved.',
+                        if (!scope.session.isAccount && scope.auth.isConfigured) 'Sign in to try the AI coach.',
+                        if (coach.aiAvailable && !showConsent) 'Turn on the AI coach in Settings.',
+                      ].join(' '),
+                style: NqText.caption,
               ),
+            ),
             Expanded(
               child: messages.isEmpty
-                  ? _EmptyCoach(onPrompt: _send)
+                  ? _EmptyCoach(
+                      onPrompt: _send,
+                      consent: showConsent ? AiConsentCard(coach: coach) : null,
+                    )
                   : ListView.builder(
                       controller: _scroll,
                       padding: const EdgeInsets.fromLTRB(NqSpace.page, NqSpace.sm, NqSpace.page, NqSpace.lg),
-                      itemCount: messages.length + (coach.isReplying ? 1 : 0),
-                      itemBuilder: (context, i) =>
-                          i == messages.length ? const _Typing() : _Bubble(message: messages[i]),
+                      itemCount: (showConsent ? 1 : 0) + messages.length + (coach.isReplying ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (showConsent && index == 0) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: NqSpace.md),
+                            child: AiConsentCard(coach: coach),
+                          );
+                        }
+                        final i = index - (showConsent ? 1 : 0);
+                        if (i < messages.length) return _Bubble(message: messages[i]);
+                        return streaming == null
+                            ? const _Typing()
+                            : _Bubble(
+                                message: ChatMessage(role: ChatRole.coach, text: streaming),
+                                streaming: true,
+                              );
+                      },
                     ),
             ),
             if (messages.isNotEmpty)
@@ -133,14 +178,16 @@ class _CoachScreenState extends State<CoachScreen> {
 }
 
 class _EmptyCoach extends StatelessWidget {
-  const _EmptyCoach({required this.onPrompt});
+  const _EmptyCoach({required this.onPrompt, this.consent});
 
   final ValueChanged<String> onPrompt;
+  final Widget? consent;
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(NqSpace.page, NqSpace.xl, NqSpace.page, NqSpace.lg),
+    padding: EdgeInsets.fromLTRB(NqSpace.page, consent == null ? NqSpace.xl : NqSpace.sm, NqSpace.page, NqSpace.lg),
     children: [
+      if (consent != null) ...[consent!, const SizedBox(height: NqSpace.xl)],
       Container(
         width: 48,
         height: 48,
@@ -204,9 +251,12 @@ class _PromptChip extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message});
+  const _Bubble({required this.message, this.streaming = false});
 
   final ChatMessage message;
+
+  /// Still arriving — no label until it's complete.
+  final bool streaming;
 
   @override
   Widget build(BuildContext context) {
@@ -241,10 +291,18 @@ class _Bubble extends StatelessWidget {
                   style: NqText.body.copyWith(fontSize: 16, color: user ? NqColors.onInk : NqColors.ink),
                 ),
               ),
-              if (!user && message.isDemo)
+              if (!user && !streaming)
                 Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 6),
-                  child: Text('Demo coach · scripted', style: NqText.caption),
+                  padding: const EdgeInsets.only(top: 4, left: 6, right: 6),
+                  child: Text(
+                    message.notice ??
+                        (message.isDemo
+                            ? 'Demo coach · scripted'
+                            : careful
+                            ? 'Safety note · not medical advice'
+                            : 'AI coach · can make mistakes'),
+                    style: message.notice == null ? NqText.caption : NqText.caption.copyWith(color: NqColors.demoInk),
+                  ),
                 ),
             ],
           ),
@@ -252,6 +310,28 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "AI" pill for the live coach — same shape as the demo pill, neutral colours.
+class _AiBadge extends StatelessWidget {
+  const _AiBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(color: NqColors.fill, borderRadius: BorderRadius.circular(999)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.auto_awesome_rounded, size: 13, color: NqColors.ink),
+        const SizedBox(width: 4),
+        Text(
+          'AI coach',
+          style: NqText.caption.copyWith(color: NqColors.ink, fontWeight: FontWeight.w600),
+        ),
+      ],
+    ),
+  );
 }
 
 class _Typing extends StatelessWidget {
@@ -305,6 +385,7 @@ class _Composer extends StatelessWidget {
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
             textInputAction: TextInputAction.send,
+            inputFormatters: [LengthLimitingTextInputFormatter(CoachPayload.maxMessageChars)],
             onSubmitted: (_) => onSend(),
             decoration: InputDecoration(
               hintText: 'Ask your coach…',

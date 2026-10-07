@@ -26,6 +26,7 @@ class DemoCoachService implements CoachService {
     required String message,
     required CoachContext context,
     List<ChatMessage> history = const [],
+    void Function(String textSoFar)? onPartial,
   }) async {
     if (replyDelay > Duration.zero) await Future<void>.delayed(replyDelay);
     final safety = CoachSafety.check(message, context, isDemo: true);

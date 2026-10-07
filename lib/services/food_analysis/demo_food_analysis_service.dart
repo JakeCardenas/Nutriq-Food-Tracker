@@ -19,6 +19,9 @@ class DemoFoodAnalysisService implements FoodAnalysisService {
   bool get isDemo => true;
 
   @override
+  bool get recognizesPhotos => true;
+
+  @override
   String get label => 'Demo analyzer (sample results)';
 
   @override

@@ -4,5 +4,6 @@
   "AUTH_REDIRECT_URL": "com.prodbyjake.nutriq://login-callback",
   "GOOGLE_WEB_CLIENT_ID": "",
   "GOOGLE_IOS_CLIENT_ID": "",
-  "APPLE_SIGN_IN_ENABLED": false
+  "APPLE_SIGN_IN_ENABLED": false,
+  "AI_COACH_ENABLED": false
 }

@@ -16,37 +16,64 @@ abstract final class MealFlows {
   @visibleForTesting
   static Future<List<CameraDescription>> Function() loadCameras = availableCameras;
 
-  /// Opens the in-app camera. A captured photo becomes a draft on Today.
-  static Future<void> openCamera(BuildContext context) => Navigator.of(context).push(
-    PageRouteBuilder<void>(
-      fullscreenDialog: true,
-      pageBuilder: (_, _, _) => CameraScreen(loadCameras: loadCameras),
-      transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
-    ),
-  );
+  /// Opens the in-app camera. A captured photo becomes a draft on Today, or —
+  /// when photos aren't analysed — goes straight to "What's in this photo?".
+  static Future<void> openCamera(BuildContext context) async {
+    final toDescribe = await Navigator.of(context).push<String>(
+      PageRouteBuilder<String>(
+        fullscreenDialog: true,
+        pageBuilder: (_, _, _) => CameraScreen(loadCameras: loadCameras),
+        transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
+      ),
+    );
+    if (toDescribe != null && context.mounted) await describePhoto(context, toDescribe);
+  }
 
-  /// Picks a photo from the library and starts a draft. Returns true if one started.
-  static Future<bool> pickFromLibrary(BuildContext context) async {
+  /// From the + menu: pick a library photo, then review or describe it.
+  static Future<void> pickFromLibrary(BuildContext context) async {
+    final chosen = await choosePhoto(context);
+    if (chosen.toDescribe != null && context.mounted) await describePhoto(context, chosen.toDescribe!);
+  }
+
+  /// Picks a library photo and stores it. [picked] is false when nothing was
+  /// chosen; [toDescribe] is the stored photo when it still needs describing.
+  static Future<({bool picked, String? toDescribe})> choosePhoto(BuildContext context) async {
     final scope = AppScope.of(context);
     final result = await scope.photos.pick(PhotoSource.library);
-    if (!context.mounted) return false;
+    if (!context.mounted) return (picked: false, toDescribe: null);
     switch (result) {
       case PhotoCancelled():
-        return false;
+        return (picked: false, toDescribe: null);
       case PhotoPickFailed():
         showToast(context, photoFailureMessage(result));
-        return false;
+        return (picked: false, toDescribe: null);
       case PhotoPicked(:final tempPath):
-        await startDraft(context, tempPath);
-        return true;
+        return (picked: true, toDescribe: await startDraft(context, tempPath));
     }
   }
 
   /// Stores a captured/picked photo on this phone and starts analyzing it.
-  static Future<void> startDraft(BuildContext context, String tempPath) async {
+  /// Returns the stored path instead when photos aren't analysed, so the
+  /// caller can ask what's in it.
+  static Future<String?> startDraft(BuildContext context, String tempPath) async {
     final scope = AppScope.of(context);
     final stored = await scope.photos.persist(tempPath);
+    if (!scope.analysis.recognizesPhotos) return stored;
     await scope.scans.startScan(stored);
+    return null;
+  }
+
+  /// "What's in this photo?" — the photo is kept only if a meal is logged.
+  static Future<void> describePhoto(BuildContext context, String storedPhotoPath) async {
+    final photos = AppScope.of(context).photos;
+    final result = await Navigator.of(context).push<EditorResult>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => MealEditorScreen(photoPath: storedPhotoPath, describeFirst: true),
+      ),
+    );
+    if (result?.mealSaved != true) await photos.delete(storedPhotoPath);
+    if (result != null && context.mounted) showToast(context, result.message);
   }
 
   static String photoFailureMessage(PhotoPickFailed f) => switch (f.failure) {
@@ -70,15 +97,13 @@ abstract final class MealFlows {
     ),
   );
 
-  /// Logs a draft's photo with foods entered by hand (e.g. after a failed analysis).
-  static Future<void> manualFromDraft(BuildContext context, ScanDraft draft) => _push(
-    context,
-    MealEditorScreen(photoPath: draft.photoPath, openAddFood: true, startManualEntry: true, draftId: draft.id),
-  );
+  /// Logs a draft's photo with foods the person describes (e.g. after a failed analysis).
+  static Future<void> manualFromDraft(BuildContext context, ScanDraft draft) =>
+      _push(context, MealEditorScreen(photoPath: draft.photoPath, describeFirst: true, draftId: draft.id));
 
-  /// A new meal, starting with the manual food form.
+  /// A new meal, starting with "What did you eat?".
   static Future<void> openManual(BuildContext context, {DateTime? at}) =>
-      _push(context, MealEditorScreen(openAddFood: true, startManualEntry: true, initialLoggedAt: at));
+      _push(context, MealEditorScreen(describeFirst: true, initialLoggedAt: at));
 
   /// A new meal, starting from My foods and recent foods.
   static Future<void> openMyFoods(BuildContext context) => _push(context, const MealEditorScreen(openAddFood: true));

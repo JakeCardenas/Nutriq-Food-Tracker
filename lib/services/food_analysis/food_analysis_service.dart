@@ -10,6 +10,10 @@ abstract interface class FoodAnalysisService {
   /// True when results are samples rather than real photo analysis.
   bool get isDemo;
 
+  /// False when photos aren't analysed at all: the person describes the meal
+  /// instead, and no scan draft is created.
+  bool get recognizesPhotos;
+
   /// Short name shown in Settings → About.
   String get label;
 

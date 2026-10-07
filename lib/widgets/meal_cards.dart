@@ -161,12 +161,25 @@ class DraftCard extends StatelessWidget {
     final photo = AppScope.of(context).photos.resolve(draft.photoPath);
     final ready = draft.status == DraftStatus.ready;
     final failed = draft.status == DraftStatus.failed;
+    // Real recognition names what it saw; the demo keeps its "estimate" wording.
+    final noFood = ready && draft.items.isEmpty;
+    final found = draft.items.map((i) => i.name.split(',').first).take(3).join(' · ');
+    final readyTitle = noFood
+        ? 'No food found'
+        : draft.isDemo
+        ? 'Estimate ready'
+        : 'Foods found';
+    final readyText = noFood
+        ? 'Tap to tell Nutriq what’s in it.'
+        : draft.isDemo
+        ? 'Tap to check and fix the foods before logging.'
+        : '$found — tap to check the amounts.';
     return Semantics(
       liveRegion: true,
       button: ready,
       label: switch (draft.status) {
         DraftStatus.analyzing => 'Analyzing your meal photo',
-        DraftStatus.ready => 'Estimate ready. Double tap to review before logging.',
+        DraftStatus.ready => '$readyTitle. ${readyText.replaceAll(' — tap', '. Double tap')}',
         DraftStatus.failed => 'Couldn’t analyze this photo',
       },
       child: Pressable(
@@ -214,7 +227,7 @@ class DraftCard extends StatelessWidget {
                             Expanded(
                               child: Text(switch (draft.status) {
                                 DraftStatus.analyzing => 'Analyzing your meal…',
-                                DraftStatus.ready => 'Estimate ready',
+                                DraftStatus.ready => readyTitle,
                                 DraftStatus.failed => 'Couldn’t analyze',
                               }, style: NqText.subhead),
                             ),
@@ -227,8 +240,8 @@ class DraftCard extends StatelessWidget {
                             DraftStatus.analyzing =>
                               draft.isDemo
                                   ? 'Preparing a sample estimate. Your photo stays on this phone.'
-                                  : 'This usually takes a few seconds.',
-                            DraftStatus.ready => 'Tap to check and fix the foods before logging.',
+                                  : 'Looking for food on this phone — your photo stays here.',
+                            DraftStatus.ready => readyText,
                             DraftStatus.failed => draft.error ?? 'Something went wrong.',
                           },
                           style: NqText.footnote,

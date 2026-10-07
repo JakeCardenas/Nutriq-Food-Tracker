@@ -108,8 +108,8 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     try {
       final file = await controller.takePicture();
       if (!mounted) return;
-      await MealFlows.startDraft(context, file.path);
-      if (mounted) Navigator.pop(context);
+      final toDescribe = await MealFlows.startDraft(context, file.path);
+      if (mounted) Navigator.pop(context, toDescribe);
     } catch (e) {
       if (mounted) {
         setState(() => _capturing = false);
@@ -121,10 +121,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   Future<void> _library() async {
     if (_busy) return;
     setState(() => _busy = true);
-    final started = await MealFlows.pickFromLibrary(context);
+    final chosen = await MealFlows.choosePhoto(context);
     if (!mounted) return;
     setState(() => _busy = false);
-    if (started) Navigator.pop(context);
+    if (chosen.picked) Navigator.pop(context, chosen.toDescribe);
   }
 
   Future<void> _manual() async {
@@ -189,6 +189,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                               style: NqText.headline.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
                             ),
                             if (AppScope.of(context).analysis.isDemo) ...[const SizedBox(height: 6), const _DemoPill()],
+                            if (!AppScope.of(context).analysis.recognizesPhotos) ...[
+                              const SizedBox(height: 6),
+                              const _DescribeNextPill(),
+                            ],
                           ],
                         ),
                       ),
@@ -493,6 +497,21 @@ class _DemoPill extends StatelessWidget {
           ),
         ],
       ),
+    ),
+  );
+}
+
+/// Says up front that the photo is kept and the person types what's in it.
+class _DescribeNextPill extends StatelessWidget {
+  const _DescribeNextPill();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(999)),
+    child: Text(
+      'You’ll type what’s in it next',
+      style: NqText.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
     ),
   );
 }
