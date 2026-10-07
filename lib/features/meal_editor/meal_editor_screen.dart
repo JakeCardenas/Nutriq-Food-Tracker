@@ -10,6 +10,8 @@ import '../../domain/meal_description.dart';
 import '../../domain/models/food_item.dart';
 import '../../domain/models/meal.dart';
 import '../../domain/models/nutrition.dart';
+import '../../domain/models/photo_estimate.dart';
+import '../../domain/models/photo_suggestion.dart';
 import '../../widgets/adaptive.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/controls.dart';
@@ -21,6 +23,9 @@ import 'add_food_sheet.dart';
 import 'describe_meal_card.dart';
 import 'feedback_prompt.dart';
 import 'food_item_form.dart';
+import 'photo_estimate_card.dart';
+import 'photo_suggestions_card.dart';
+import 'serving_sheet.dart';
 
 /// What the editor did, for the caller's confirmation toast.
 class EditorResult {
@@ -46,6 +51,9 @@ class MealEditorScreen extends StatefulWidget {
     this.startManualEntry = false,
     this.emptyResult = false,
     this.describeFirst = false,
+    this.estimate,
+    this.notice,
+    this.suggestions = const [],
     this.initialLoggedAt,
     this.draftId,
   });
@@ -69,6 +77,15 @@ class MealEditorScreen extends StatefulWidget {
 
   /// Focuses "What did you eat?" on arrival (a new meal with no foods yet).
   final bool describeFirst;
+
+  /// Foods the photo might contain; offered, never added without the person choosing them.
+  final List<PhotoSuggestion> suggestions;
+
+  /// The optional cloud photo estimate — staged until the person adds its foods.
+  final PhotoEstimate? estimate;
+
+  /// Why the photo result is limited (e.g. the estimate was unavailable offline).
+  final String? notice;
 
   /// Pre-set date/time for a new meal (e.g. adding to a past day).
   final DateTime? initialLoggedAt;
@@ -97,6 +114,16 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
 
   /// Parts of the last description that aren't in the food list.
   List<String> _unmatched = const [];
+
+  /// Described foods whose amount can't be right ("1/0 egg") — not added.
+  List<String> _unclear = const [];
+
+  /// Photo suggestions not yet added or dismissed.
+  late List<PhotoSuggestion> _suggestions = [...widget.suggestions];
+
+  /// The photo estimate card is showing (until its foods are added).
+  late bool _estimateOpen = widget.estimate?.foods.isNotEmpty ?? false;
+  final _estimateCard = GlobalKey<PhotoEstimateCardState>();
 
   bool get _isNew => widget.existing == null;
   bool get _isDemo => widget.source == MealSource.demoScan;
@@ -137,14 +164,55 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
     if (item != null) _update(() => _items = [..._items, item]);
   }
 
+  /// Adds a suggested food only after the person chooses the serving (or picks
+  /// the right food from a search when the suggestion could be several).
+  Future<void> _addSuggestion(PhotoSuggestion suggestion) async {
+    final food = suggestion.food;
+    final item = food != null
+        ? await showServingSheet(context, food)
+        : await showAddFoodSheet(context, initialQuery: suggestion.searchTerm);
+    if (item == null || !mounted) return;
+    _update(() {
+      _items = [..._items, item];
+      _suggestions = [
+        for (final s in _suggestions)
+          if (s != suggestion) s,
+      ];
+    });
+  }
+
+  void _addFromEstimate(List<FoodItem> items) => _update(() {
+    _items = [..._items, ...items];
+    _estimateOpen = false;
+  });
+
+  /// Looks up a food the estimate couldn't match; true when one was added instead.
+  Future<bool> _findForEstimate(EstimatedFood food) async {
+    final item = await showAddFoodSheet(context, initialQuery: food.name);
+    if (item == null || !mounted) return false;
+    _update(() => _items = [..._items, item]);
+    return true;
+  }
+
+  void _dismissSuggestion(PhotoSuggestion suggestion) => setState(
+    () => _suggestions = [
+      for (final s in _suggestions)
+        if (s != suggestion) s,
+    ],
+  );
+
   void _onDescribed(MealParse result) {
     if (result.items.isEmpty) {
-      setState(() => _unmatched = result.unmatched);
+      setState(() {
+        _unmatched = result.unmatched;
+        _unclear = result.unclearAmounts;
+      });
       return;
     }
     _update(() {
       _items = [..._items, ...result.items];
       _unmatched = result.unmatched;
+      _unclear = result.unclearAmounts;
     });
   }
 
@@ -214,6 +282,20 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
 
   Future<void> _save() async {
     if (_items.isEmpty || _saving) return;
+    final waiting = _estimateOpen ? _estimateCard.currentState?.readyCount ?? 0 : 0;
+    if (waiting > 0) {
+      final logAnyway = await confirmAction(
+        context,
+        title: 'Photo estimate not added',
+        message:
+            '$waiting ${waiting == 1 ? 'food from the photo estimate isn’t' : 'foods from the photo estimate aren’t'} '
+            'in this meal yet. Add ${waiting == 1 ? 'it' : 'them'} from the estimate first, or log without '
+            '${waiting == 1 ? 'it' : 'them'}.',
+        confirmLabel: 'Log without them',
+        destructive: false,
+      );
+      if (!logAnyway || !mounted) return;
+    }
     setState(() => _saving = true);
     final scope = AppScope.of(context);
     final log = scope.log;
@@ -488,6 +570,19 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
             'anything it missed below.',
       ),
     ],
+    if (widget.notice != null) ...[
+      const SizedBox(height: 14),
+      NoticeCard(icon: Icons.cloud_off_outlined, title: 'About this photo', message: widget.notice!),
+    ],
+    if (_estimateOpen) ...[
+      const SizedBox(height: 14),
+      PhotoEstimateCard(
+        key: _estimateCard,
+        estimate: widget.estimate!,
+        onAdd: _addFromEstimate,
+        onFind: _findForEstimate,
+      ),
+    ],
     if (widget.emptyResult) ...[
       const SizedBox(height: 14),
       const NoticeCard(
@@ -496,11 +591,26 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
         message: 'We couldn’t suggest foods for this photo. Add what you ate below.',
       ),
     ],
+    if (_suggestions.isNotEmpty) ...[
+      const SizedBox(height: 14),
+      PhotoSuggestionsCard(suggestions: _suggestions, onAdd: _addSuggestion, onDismiss: _dismissSuggestion),
+    ],
     SectionHeader(
       'Ingredients',
       top: NqSpace.xl,
       trailing: QuietButton(label: 'Add', icon: Icons.add_rounded, onPressed: _addFood),
     ),
+    if (_unclear.isNotEmpty) ...[
+      NoticeCard(
+        icon: Icons.straighten_rounded,
+        title: 'Check the amount',
+        message:
+            'These amounts don’t look right, so they weren’t added: ${_unclear.map((u) => '“$u”').join(', ')}. '
+            'Describe ${_unclear.length == 1 ? 'it' : 'them'} again with a real amount, or tap Add.',
+        onDismiss: () => setState(() => _unclear = const []),
+      ),
+      const SizedBox(height: 10),
+    ],
     if (_unmatched.isNotEmpty) ...[
       NoticeCard(
         icon: Icons.help_outline_rounded,
@@ -512,7 +622,7 @@ class _MealEditorScreenState extends State<MealEditorScreen> {
       ),
       const SizedBox(height: 10),
     ],
-    if (_items.isEmpty && _isNew)
+    if (_items.isEmpty && _isNew && !_estimateOpen)
       DescribeMealCard(
         title: widget.photoPath != null ? 'What’s in this photo?' : 'What did you eat?',
         autofocus: widget.describeFirst,
@@ -793,10 +903,7 @@ class _IngredientCard extends StatelessWidget {
                 MacroValue(macro: Macro.fat, text: '${t.fat.round()}g'),
               ],
             ),
-            if (item.isLowConfidence) ...[
-              const SizedBox(height: 8),
-              const EstimateBadge(label: 'Low confidence — check this'),
-            ],
+            if (item.isLowConfidence) ...[const SizedBox(height: 8), const EstimateBadge(label: 'Check this food')],
             const SizedBox(height: 10),
             Row(
               children: [

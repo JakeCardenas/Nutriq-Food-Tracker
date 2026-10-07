@@ -10,6 +10,10 @@ begin
   if not exists (select from pg_roles where rolname = 'authenticated') then
     create role authenticated nologin noinherit;
   end if;
+  -- Supabase's server-side role (Edge Functions with the secret key); bypasses RLS.
+  if not exists (select from pg_roles where rolname = 'service_role') then
+    create role service_role nologin noinherit bypassrls;
+  end if;
 end;
 $$;
 

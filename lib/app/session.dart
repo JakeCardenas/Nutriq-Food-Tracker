@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import '../data/cloud_repository.dart';
 import '../data/local_store.dart';
@@ -8,11 +9,13 @@ import '../services/auth/auth_service.dart';
 import '../services/coach/coach_backend.dart';
 import '../services/coach/coach_service.dart';
 import '../services/food_analysis/food_analysis_service.dart';
+import '../services/food_analysis/photo_estimate_backend.dart';
 import '../services/health/health_service.dart';
 import '../services/photo_service.dart';
 import '../state/coach_controller.dart';
 import '../state/health_controller.dart';
 import '../state/meal_log_controller.dart';
+import '../state/photo_analysis_controller.dart';
 import '../state/profile_controller.dart';
 import '../state/scan_controller.dart';
 import '../state/sync_controller.dart';
@@ -21,8 +24,23 @@ enum SessionMode { local, account }
 
 /// Services shared by every session (they hold no user data).
 class SessionServices {
-  const SessionServices({required this.analysis, required this.coach, required this.health, this.coachBackend});
+  const SessionServices({
+    required this.analysis,
+    required this.coach,
+    required this.health,
+    this.coachBackend,
+    this.photoEstimates,
+    this.preparePhoto,
+  });
+
+  /// On-device photo analysis (or none). Each session wraps it in a [PhotoAnalysisController].
   final FoodAnalysisService analysis;
+
+  /// The optional, opt-in cloud photo estimate. Only signed-in sessions get it.
+  final PhotoEstimateBackend? photoEstimates;
+
+  /// Replaces the resize/strip step before upload (tests use fake photos).
+  final Future<Uint8List> Function(Uint8List)? preparePhoto;
 
   /// The scripted coach (always available, and the AI coach's fallback).
   final CoachService coach;
@@ -40,7 +58,7 @@ class AppSession {
     required this.user,
     required this.store,
     required this.photos,
-    required this.analysis,
+    required this.photoAnalysis,
     required this.profile,
     required this.log,
     required this.coach,
@@ -55,7 +73,10 @@ class AppSession {
   final AuthUser? user;
   final LocalStore store;
   final PhotoService photos;
-  final FoodAnalysisService analysis;
+
+  /// How photos are analysed for this session (on-device, or the opted-in cloud estimate).
+  final PhotoAnalysisController photoAnalysis;
+  FoodAnalysisService get analysis => photoAnalysis;
   final ProfileController profile;
   final MealLogController log;
   final CoachController coach;
@@ -88,6 +109,7 @@ class AppSession {
     scans.dispose();
     health.dispose();
     coach.dispose();
+    photoAnalysis.dispose();
     log.dispose();
     profile.dispose();
     await store.close();
@@ -111,7 +133,18 @@ Future<AppSession> assembleSession({
     ai: user == null ? null : services.coachBackend,
     store: store,
   );
-  final scans = ScanController(store: store, analysis: services.analysis, photos: photos);
+  final photoAnalysis = PhotoAnalysisController(
+    onDevice: services.analysis,
+    cloud: user == null ? null : services.photoEstimates,
+    store: store,
+    prepare: services.preparePhoto,
+  );
+  final scans = ScanController(
+    store: store,
+    analysis: photoAnalysis,
+    photos: photos,
+    photoInUse: (path) => log.meals.any((m) => m.photoPath == path),
+  );
   final health = HealthController(service: services.health, store: store);
   final cleanups = <void Function()>[];
 
@@ -120,8 +153,11 @@ Future<AppSession> assembleSession({
   await scans.load();
   await health.load();
   await coach.load();
+  await photoAnalysis.load();
 
-  final healthSub = log.mealSaved.listen(health.onMealSaved);
+  final healthSub = log.mealChanges.listen(
+    (c) => c.after == null ? health.onMealDeleted(c.before!) : health.onMealSaved(c.after!, previous: c.before),
+  );
   cleanups.add(healthSub.cancel);
 
   SyncController? sync;
@@ -151,7 +187,7 @@ Future<AppSession> assembleSession({
     user: user,
     store: store,
     photos: photos,
-    analysis: services.analysis,
+    photoAnalysis: photoAnalysis,
     profile: profile,
     log: log,
     coach: coach,

@@ -6,6 +6,7 @@ import '../app/app_scope.dart';
 import '../app/format.dart';
 import '../app/theme.dart';
 import '../domain/models/meal.dart';
+import '../domain/models/photo_estimate.dart';
 import '../domain/models/scan_draft.dart';
 import 'buttons.dart';
 import 'labels.dart';
@@ -25,6 +26,7 @@ class MealCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: '${meal.title} at ${timeLabel(meal.loggedAt)}, $names, about ${fmtKcal(t.calories)} calories, estimated',
+      onTap: onTap,
       excludeSemantics: true,
       child: Pressable(
         onTap: onTap,
@@ -161,20 +163,35 @@ class DraftCard extends StatelessWidget {
     final photo = AppScope.of(context).photos.resolve(draft.photoPath);
     final ready = draft.status == DraftStatus.ready;
     final failed = draft.status == DraftStatus.failed;
-    // Real recognition names what it saw; the demo keeps its "estimate" wording.
-    final noFood = ready && draft.items.isEmpty;
-    final found = draft.items.map((i) => i.name.split(',').first).take(3).join(' · ');
-    final readyTitle = noFood
-        ? 'No food found'
+    // Photo suggestions are guesses, so the card never says food was "found".
+    final estimate = draft.estimate;
+    final hasEstimate = estimate != null && estimate.foods.isNotEmpty;
+    final noFood = ready && draft.items.isEmpty && draft.suggestions.isEmpty && !hasEstimate;
+    final cloudScan = AppScope.of(context).photoAnalysis.cloudEnabled;
+    final names = draft.items.isNotEmpty
+        ? draft.items.map((i) => i.name.split(',').first)
+        : draft.suggestions.map((s) => s.label);
+    final readyTitle = hasEstimate
+        ? 'Photo estimate ready'
+        : noFood
+        ? 'No food suggestions'
         : draft.isDemo
         ? 'Estimate ready'
-        : 'Foods found';
-    final readyText = noFood
-        ? 'Tap to tell Nutriq what’s in it.'
+        : 'Ready to review';
+    final readyText = hasEstimate
+        ? switch (_estimateSummary(estimate)) {
+            '' => 'Tap to check every food and amount.',
+            final summary => '$summary — tap to check every food and amount.',
+          }
+        : draft.notice != null
+        ? draft.notice!
+        : noFood
+        ? 'Tap to add what you ate.'
         : draft.isDemo
         ? 'Tap to check and fix the foods before logging.'
-        : '$found — tap to check the amounts.';
+        : 'Might include: ${names.take(3).join(' · ')} — tap to choose what you ate.';
     return Semantics(
+      container: true,
       liveRegion: true,
       button: ready,
       label: switch (draft.status) {
@@ -232,6 +249,15 @@ class DraftCard extends StatelessWidget {
                               }, style: NqText.subhead),
                             ),
                             if (draft.isDemo) const DemoBadge(),
+                            // In every state; its own tap never opens the review.
+                            IconButton(
+                              tooltip: 'Discard scan',
+                              onPressed: onDiscard,
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                              icon: const Icon(Icons.delete_outline_rounded, size: 20, color: NqColors.textSecondary),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -240,7 +266,9 @@ class DraftCard extends StatelessWidget {
                             DraftStatus.analyzing =>
                               draft.isDemo
                                   ? 'Preparing a sample estimate. Your photo stays on this phone.'
-                                  : 'Looking for food on this phone — your photo stays here.',
+                                  : cloudScan
+                                  ? 'Sending a smaller copy for a photo estimate…'
+                                  : 'Checking the photo on this phone — it stays here.',
                             DraftStatus.ready => readyText,
                             DraftStatus.failed => draft.error ?? 'Something went wrong.',
                           },
@@ -253,7 +281,6 @@ class DraftCard extends StatelessWidget {
                             children: [
                               QuietButton(label: 'Retry', icon: Icons.refresh_rounded, onPressed: onRetry),
                               QuietButton(label: 'Log manually', onPressed: onManual),
-                              QuietButton(label: 'Discard', color: NqColors.danger, onPressed: onDiscard),
                             ],
                           ),
                         if (ready)
@@ -322,4 +349,14 @@ class _AnalyzingPercentState extends State<_AnalyzingPercent> {
       ),
     );
   }
+}
+
+/// "≈ 377 kcal · Tuna and rice" — with no number when no food could be counted yet. Hidden
+/// (inferred) ingredients never count until the person includes them in the review.
+String _estimateSummary(PhotoEstimate e) {
+  final counted = [
+    for (final f in e.foods)
+      if (!f.inferred && f.hasNutrition && f.suggestedGrams != null) (f, f.suggestedGrams),
+  ];
+  return [if (counted.isNotEmpty) '≈ ${fmtKcal(PhotoEstimate.totalFor(counted).calories)} kcal', ?e.dish].join(' · ');
 }

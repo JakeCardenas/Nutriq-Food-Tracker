@@ -44,6 +44,7 @@ class WeekChart extends StatelessWidget {
                         label:
                             '${longDate(d.day)}: '
                             '${d.mealCount == 0 ? 'nothing logged' : 'about ${fmtKcal(d.totals.calories)} calories'}',
+                        onTap: () => onSelect(d.day),
                         excludeSemantics: true,
                         child: GestureDetector(
                           behavior: HitTestBehavior.opaque,
@@ -75,31 +76,41 @@ class WeekChart extends StatelessWidget {
           children: [
             for (final d in days)
               Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                // Read as one button by VoiceOver, like Today's week strip.
+                child: Semantics(
+                  button: true,
+                  selected: d.day == selected,
                   onTap: () => onSelect(d.day),
-                  child: Column(
-                    children: [
-                      Text(weekdayShort(d.day), style: NqText.caption),
-                      const SizedBox(height: 4),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: 30,
-                        height: 30,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: d.day == selected ? NqColors.inkSoft : Colors.transparent,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '${d.day.day}',
-                          style: NqText.numberSmall.copyWith(
-                            fontSize: 14,
-                            color: d.day == selected ? NqColors.onInk : NqColors.textSecondary,
+                  label:
+                      '${longDate(d.day)}'
+                      '${d.mealCount > 0 ? ', about ${fmtKcal(d.totals.calories)} calories' : ', nothing logged'}',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onSelect(d.day),
+                    child: Column(
+                      children: [
+                        Text(weekdayShort(d.day), style: NqText.caption),
+                        const SizedBox(height: 4),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 30,
+                          height: 30,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: d.day == selected ? NqColors.inkSoft : Colors.transparent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${d.day.day}',
+                            style: NqText.numberSmall.copyWith(
+                              fontSize: 14,
+                              color: d.day == selected ? NqColors.onInk : NqColors.textSecondary,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

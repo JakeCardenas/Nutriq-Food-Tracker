@@ -132,6 +132,20 @@ class HealthKitService implements HealthService {
     );
   });
 
+  @override
+  Future<bool> deleteMeal(Meal meal) => _wrap(() async {
+    await _configure();
+    // writeMeal starts every sample at meal.loggedAt, so a 1 ms window holds only this meal's samples;
+    // HealthKit only lets an app delete what it wrote itself.
+    final start = meal.loggedAt;
+    final end = start.add(const Duration(milliseconds: 1));
+    var deleted = true;
+    for (final type in writeTypes) {
+      deleted = await _health.delete(type: type, startTime: start, endTime: end) && deleted;
+    }
+    return deleted;
+  });
+
   static double _numeric(hk.HealthDataPoint p) =>
       p.value is hk.NumericHealthValue ? (p.value as hk.NumericHealthValue).numericValue.toDouble() : 0;
 

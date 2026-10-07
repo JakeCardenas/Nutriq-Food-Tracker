@@ -50,6 +50,26 @@ Future<void> _describe(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('an amount that can’t be right is flagged to check, not added', (tester) async {
+    final deps = await TestDeps.create(analysis: const NoPhotoRecognitionService());
+    await deps.pumpApp(tester);
+    await _openAddMenu(tester);
+    await tester.tap(find.text('Describe meal'));
+    await tester.pumpAndSettle();
+
+    await _describe(tester, '2 cups rice and 1/0 egg');
+
+    expect(find.text('White rice, cooked'), findsWidgets, reason: 'the rest of the meal is still added');
+    expect(find.text('Check the amount'), findsOneWidget);
+    expect(find.textContaining('“1/0 egg”'), findsOneWidget);
+    expect(
+      find.textContaining('Not in Nutriq’s food list'),
+      findsNothing,
+      reason: 'egg is in the list; its amount isn’t right',
+    );
+    expect(deps.log.meals, isEmpty);
+  });
+
   testWidgets('+ → Describe meal → foods with real numbers → log', (tester) async {
     final deps = await TestDeps.create(analysis: const NoPhotoRecognitionService());
     await deps.pumpApp(tester);
@@ -112,7 +132,7 @@ void main() {
     await tester.tap(find.byTooltip('Close'));
     await tester.pumpAndSettle();
     expect(deps.log.meals, isEmpty);
-    expect(deps.photos.deleted, ['meal_photos/test.jpg']);
+    expect(deps.photos.deleted, ['/fake/photo.jpg', 'meal_photos/test.jpg']);
   });
 
   testWidgets('“Add an ingredient” search includes Nutriq’s food list', (tester) async {
@@ -129,6 +149,9 @@ void main() {
     expect(find.text('Food list'), findsOneWidget);
     await tester.tap(find.text('Longganisa'));
     await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('serving-sheet')), findsOneWidget, reason: 'confirm the serving first');
+    await tester.tap(find.text('Add to meal'));
+    await tester.pumpAndSettle();
     expect(find.text('Longganisa'), findsWidgets, reason: 'the ingredient (and the meal title)');
     expect(find.text('What did you eat?'), findsNothing);
   });
@@ -139,9 +162,9 @@ void main() {
     await _openAddMenu(tester);
     await tester.tap(find.text('Photo library'));
     await tester.pumpAndSettle();
-    expect(find.text('Foods found'), findsOneWidget);
-    expect(find.textContaining('White rice'), findsOneWidget, reason: 'the Today card names what it saw');
-    await tester.tap(find.text('Foods found'));
+    expect(find.text('Ready to review'), findsOneWidget);
+    expect(find.textContaining('Might include: White rice'), findsOneWidget);
+    await tester.tap(find.text('Ready to review'));
     await tester.pumpAndSettle();
 
     expect(find.text('White rice, cooked'), findsWidgets);
@@ -163,10 +186,10 @@ void main() {
     await _openAddMenu(tester);
     await tester.tap(find.text('Photo library'));
     await tester.pumpAndSettle();
-    expect(find.text('No food found'), findsOneWidget);
+    expect(find.text('No food suggestions'), findsOneWidget);
     expect(find.text('Estimate ready'), findsNothing);
 
-    await tester.tap(find.text('No food found'));
+    await tester.tap(find.text('No food suggestions'));
     await tester.pumpAndSettle();
     expect(find.text('What’s in this photo?'), findsOneWidget);
     await _describe(tester, 'tocilog');

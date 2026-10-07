@@ -8,6 +8,7 @@ import '../../services/photo_service.dart';
 import '../../widgets/adaptive.dart';
 import '../meal_editor/meal_editor_screen.dart';
 import 'camera_screen.dart';
+import 'photo_consent.dart';
 
 /// Navigation for logging: camera → draft (analyzed in the background) →
 /// review → log. Nothing is logged until the person saves the review.
@@ -57,7 +58,14 @@ abstract final class MealFlows {
   /// caller can ask what's in it.
   static Future<String?> startDraft(BuildContext context, String tempPath) async {
     final scope = AppScope.of(context);
+    // Optional cloud estimates: ask once, before the first upload.
+    await askPhotoEstimateConsentIfNeeded(context, scope.photoAnalysis);
     final stored = await scope.photos.persist(tempPath);
+    // The stored copy is the only one kept, so discarding the draft later really removes the photo. Best effort:
+    // the system clears its temporary folder anyway, and a failure here mustn't lose the stored photo.
+    try {
+      await scope.photos.delete(tempPath);
+    } catch (_) {}
     if (!scope.analysis.recognizesPhotos) return stored;
     await scope.scans.startScan(stored);
     return null;
@@ -92,10 +100,25 @@ abstract final class MealFlows {
       photoPath: draft.photoPath,
       source: draft.isDemo ? MealSource.demoScan : MealSource.scan,
       demoSampleName: draft.sampleName,
-      emptyResult: draft.items.isEmpty,
+      suggestions: draft.suggestions,
+      estimate: draft.estimate,
+      notice: draft.notice,
+      emptyResult: draft.items.isEmpty && draft.suggestions.isEmpty && (draft.estimate?.foods.isEmpty ?? true),
       draftId: draft.id,
     ),
   );
+
+  /// "Discard this scan?" — removes the unfinished draft and its photo after the person confirms.
+  static Future<void> discardDraft(BuildContext context, ScanDraft draft) async {
+    final scans = AppScope.of(context).scans;
+    final confirmed = await confirmAction(
+      context,
+      title: 'Discard this scan?',
+      message: 'This removes the unfinished scan and its photo from this phone. Meals you’ve already logged aren’t affected.',
+      confirmLabel: 'Discard',
+    );
+    if (confirmed) await scans.discard(draft.id);
+  }
 
   /// Logs a draft's photo with foods the person describes (e.g. after a failed analysis).
   static Future<void> manualFromDraft(BuildContext context, ScanDraft draft) =>

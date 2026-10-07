@@ -1,169 +1,142 @@
-import 'food_catalog.dart';
-import 'models/food_item.dart';
+import 'models/photo_suggestion.dart';
 
-/// One label from the iPhone's on-device image classifier.
-typedef VisionLabel = ({String label, double confidence});
+/// One label from the iPhone's general-purpose image classifier (Apple Vision).
+///
+/// [confidence] is Vision's raw score for that label. It is not a calibrated
+/// probability that the food is present, so Nutriq only uses it to order
+/// suggestions. [meetsPrecision] says whether the score clears the precision
+/// target on Apple's own per-label precision/recall curve (see
+/// `FoodVisionPlugin` in ios/Runner/AppDelegate.swift); only those labels can
+/// become suggestions.
+typedef VisionLabel = ({String label, double confidence, bool meetsPrecision});
 
-/// Turns Apple Vision's photo labels ("rice", "fried_egg"…) into foods from
-/// Nutriq's list. The classifier sees *what* is in a photo, not brands or
-/// amounts, so every food starts at its usual portion and carries the
-/// classifier's confidence (under 0.6 is shown as "check this").
+/// How a Vision label relates to Nutriq's food list.
+typedef PhotoMapping = ({String label, String search, String? food});
+
+/// Turns Vision labels into a few *suggestions* — never into logged foods or
+/// portions. A label maps straight to a food only when it names exactly that
+/// food ("banana", "fried_egg"); a label that could be several foods ("rice",
+/// "tuna", "coffee") becomes a search; broad labels ("food", "fish", "meat")
+/// and labels for different dishes ("paella") are ignored.
 abstract final class PhotoFoodMapper {
-  /// Labels below this are too unsure to suggest.
-  static const minConfidence = 0.25;
-  static const maxFoods = 5;
+  /// More than this turns whole-image labels into a fake ingredient list.
+  static const maxSuggestions = 3;
 
-  /// Vision label → a name in [FoodCatalog]. Labels not listed are ignored.
-  static const labelToFood = <String, String>{
-    // Rice and grains
-    'rice': 'rice',
-    'paella': 'fried rice',
-    'biryani': 'fried rice',
-    'risotto': 'fried rice',
-    'oatmeal': 'oatmeal',
-    'cereal': 'cereal',
-    // Fish and seafood
-    'fish': 'fish',
-    'tuna': 'tuna',
-    'salmon': 'salmon',
-    'sardine': 'sardines',
-    'mackerel': 'fish',
-    'trout': 'fish',
-    'seabass': 'fish',
-    'snapper': 'fish',
-    'swordfish': 'fish',
-    'sushi': 'sushi',
-    // Eggs
-    'egg': 'egg',
-    'fried_egg': 'fried egg',
-    'scrambled_eggs': 'scrambled egg',
-    'omelet': 'omelette',
-    // Meat
-    'poultry': 'chicken',
-    'fried_chicken': 'fried chicken',
-    'grilled_chicken': 'grilled chicken',
-    'beef': 'beef',
-    'steak': 'steak',
-    'spareribs': 'ribs',
-    'kebab': 'bbq',
-    'satay': 'bbq',
-    'souvlaki': 'bbq',
-    'bacon': 'bacon',
-    'ham': 'ham',
-    'sausage': 'sausage',
-    'hotdog': 'hotdog',
-    // Noodles, bread, dishes
-    'pasta': 'pasta',
-    'spaghetti': 'spaghetti',
-    'ramen': 'ramen',
-    'bread': 'bread',
-    'white_bread': 'white bread',
-    'sandwich': 'sandwich',
-    'hamburger': 'burger',
-    'pizza': 'pizza',
-    'fries': 'fries',
-    'burrito': 'burrito',
-    'taco': 'taco',
-    'soup': 'soup',
-    'curry': 'curry',
-    'dumpling': 'siomai',
-    'gyoza': 'siomai',
-    'wonton': 'siomai',
-    'springroll': 'lumpia',
-    'stir_fry': 'chopsuey',
-    'pancake': 'pancake',
-    'waffle': 'waffle',
-    // Vegetables
-    'vegetable': 'vegetables',
-    'salad': 'salad',
-    'coleslaw': 'salad',
-    'lettuce': 'salad',
-    'broccoli': 'broccoli',
-    'carrot': 'carrot',
-    'tomato': 'tomato',
-    'cucumber': 'cucumber',
-    'corn': 'corn',
-    'potato': 'potato',
-    // Fruit
-    'banana': 'banana',
-    'mango': 'mango',
-    'apple': 'apple',
-    'oranges': 'orange',
-    'mandarine': 'orange',
-    'grape': 'grapes',
-    'watermelon': 'watermelon',
-    'papaya': 'papaya',
-    'pineapple': 'pineapple',
-    'strawberry': 'strawberries',
-    'avocado': 'avocado',
-    // Sweets and snacks
-    'cake': 'cake',
-    'cake_regular': 'cake',
-    'birthday_cake': 'cake',
-    'cupcake': 'cake',
-    'donut': 'donut',
-    'muffin': 'muffin',
-    'croissant': 'croissant',
-    'pie': 'pie',
-    'cookie': 'cookie',
-    'chocolate': 'chocolate',
-    'ice_cream': 'ice cream',
-    'frozen_dessert': 'ice cream',
-    'flan': 'leche flan',
-    'popcorn': 'popcorn',
-    'peanut': 'peanuts',
-    'cheese': 'cheese',
-    'yogurt': 'yogurt',
-    // Drinks
-    'coffee': 'coffee',
-    'tea_drink': 'tea',
-    'juice': 'juice',
-    'soda': 'soda',
-    'beer': 'beer',
-    'milkshake': 'milkshake',
-    'smoothie': 'smoothie',
+  static const mappings = <String, PhotoMapping>{
+    // ── Names one food in Nutriq's list ────────────────────────────────────
+    'banana': (label: 'Banana', search: 'banana', food: 'Banana'),
+    'apple': (label: 'Apple', search: 'apple', food: 'Apple'),
+    'mango': (label: 'Mango', search: 'mango', food: 'Mango, ripe'),
+    'oranges': (label: 'Orange', search: 'orange', food: 'Orange'),
+    'mandarine': (label: 'Orange', search: 'orange', food: 'Orange'),
+    'grape': (label: 'Grapes', search: 'grape', food: 'Grapes'),
+    'watermelon': (label: 'Watermelon', search: 'watermelon', food: 'Watermelon'),
+    'papaya': (label: 'Papaya', search: 'papaya', food: 'Papaya'),
+    'pineapple': (label: 'Pineapple', search: 'pineapple', food: 'Pineapple'),
+    'strawberry': (label: 'Strawberries', search: 'strawberr', food: 'Strawberries'),
+    'avocado': (label: 'Avocado', search: 'avocado', food: 'Avocado'),
+    'broccoli': (label: 'Broccoli', search: 'broccoli', food: 'Broccoli, cooked'),
+    'carrot': (label: 'Carrot', search: 'carrot', food: 'Carrot'),
+    'tomato': (label: 'Tomato', search: 'tomato', food: 'Tomato'),
+    'cucumber': (label: 'Cucumber', search: 'cucumber', food: 'Cucumber'),
+    'fried_egg': (label: 'Fried egg', search: 'egg', food: 'Egg, fried'),
+    'scrambled_eggs': (label: 'Scrambled eggs', search: 'scrambled', food: 'Scrambled eggs'),
+    'hamburger': (label: 'Hamburger', search: 'burger', food: 'Hamburger'),
+    'pizza': (label: 'Pizza', search: 'pizza', food: 'Pizza'),
+    'fries': (label: 'French fries', search: 'fries', food: 'French fries'),
+    'hotdog': (label: 'Hotdog', search: 'hotdog', food: 'Hotdog'),
+    'bacon': (label: 'Bacon', search: 'bacon', food: 'Bacon'),
+    'ham': (label: 'Ham', search: 'ham', food: 'Ham'),
+    'fried_chicken': (label: 'Fried chicken', search: 'fried chicken', food: 'Fried chicken'),
+    'steak': (label: 'Steak', search: 'steak', food: 'Beef steak'),
+    'spareribs': (label: 'Ribs', search: 'ribs', food: 'Pork ribs'),
+    'burrito': (label: 'Burrito', search: 'burrito', food: 'Burrito'),
+    'taco': (label: 'Taco', search: 'taco', food: 'Taco'),
+    'sushi': (label: 'Sushi', search: 'sushi', food: 'Sushi'),
+    'salmon': (label: 'Salmon', search: 'salmon', food: 'Salmon, cooked'),
+    'oatmeal': (label: 'Oatmeal', search: 'oat', food: 'Oatmeal, cooked'),
+    'white_bread': (label: 'White bread', search: 'bread', food: 'White bread'),
+    'pancake': (label: 'Pancake', search: 'pancake', food: 'Pancake'),
+    'waffle': (label: 'Waffle', search: 'waffle', food: 'Waffle'),
+    'donut': (label: 'Donut', search: 'donut', food: 'Donut'),
+    'muffin': (label: 'Muffin', search: 'muffin', food: 'Muffin'),
+    'croissant': (label: 'Croissant', search: 'croissant', food: 'Croissant'),
+    'cake': (label: 'Cake', search: 'cake', food: 'Cake'),
+    'cake_regular': (label: 'Cake', search: 'cake', food: 'Cake'),
+    'birthday_cake': (label: 'Cake', search: 'cake', food: 'Cake'),
+    'cupcake': (label: 'Cake', search: 'cake', food: 'Cake'),
+    'cookie': (label: 'Cookie', search: 'cookie', food: 'Cookies'),
+    'ice_cream': (label: 'Ice cream', search: 'ice cream', food: 'Ice cream'),
+    'flan': (label: 'Leche flan', search: 'flan', food: 'Leche flan'),
+    'popcorn': (label: 'Popcorn', search: 'popcorn', food: 'Popcorn'),
+    'peanut': (label: 'Peanuts', search: 'peanut', food: 'Peanuts'),
+    'beer': (label: 'Beer', search: 'beer', food: 'Beer'),
+    'milkshake': (label: 'Milkshake', search: 'milkshake', food: 'Milkshake'),
+    'smoothie': (label: 'Smoothie', search: 'smoothie', food: 'Fruit shake / smoothie'),
+
+    // ── Could be several foods: the person picks from a search ─────────────
+    'rice': (label: 'Rice', search: 'rice', food: null),
+    'tuna': (label: 'Tuna', search: 'tuna', food: null),
+    'sardine': (label: 'Sardines', search: 'sardine', food: null),
+    'egg': (label: 'Egg', search: 'egg', food: null),
+    'omelet': (label: 'Omelette', search: 'omelette', food: null),
+    'grilled_chicken': (label: 'Grilled chicken', search: 'chicken', food: null),
+    'spaghetti': (label: 'Spaghetti', search: 'spaghetti', food: null),
+    'pasta': (label: 'Pasta', search: 'pasta', food: null),
+    'ramen': (label: 'Noodles', search: 'noodle', food: null),
+    'bread': (label: 'Bread', search: 'bread', food: null),
+    'sandwich': (label: 'Sandwich', search: 'sandwich', food: null),
+    'soup': (label: 'Soup', search: 'soup', food: null),
+    'curry': (label: 'Curry', search: 'curry', food: null),
+    'dumpling': (label: 'Dumplings', search: 'dumpling', food: null),
+    'gyoza': (label: 'Dumplings', search: 'dumpling', food: null),
+    'wonton': (label: 'Dumplings', search: 'dumpling', food: null),
+    'springroll': (label: 'Spring roll', search: 'spring roll', food: null),
+    'stir_fry': (label: 'Stir-fry', search: 'stir', food: null),
+    'salad': (label: 'Salad', search: 'salad', food: null),
+    'potato': (label: 'Potato', search: 'potato', food: null),
+    'corn': (label: 'Corn', search: 'corn', food: null),
+    'sausage': (label: 'Sausage', search: 'sausage', food: null),
+    'kebab': (label: 'Grilled skewer', search: 'barbecue', food: null),
+    'satay': (label: 'Grilled skewer', search: 'barbecue', food: null),
+    'souvlaki': (label: 'Grilled skewer', search: 'barbecue', food: null),
+    'pie': (label: 'Pie', search: 'pie', food: null),
+    'chocolate': (label: 'Chocolate', search: 'chocolate', food: null),
+    'frozen_dessert': (label: 'Frozen dessert', search: 'ice cream', food: null),
+    'yogurt': (label: 'Yogurt', search: 'yogurt', food: null),
+    'cheese': (label: 'Cheese', search: 'cheese', food: null),
+    'coffee': (label: 'Coffee', search: 'coffee', food: null),
+    'tea_drink': (label: 'Tea', search: 'tea', food: null),
+    'juice': (label: 'Juice', search: 'juice', food: null),
+    'soda': (label: 'Soft drink', search: 'soda', food: null),
   };
 
-  /// General labels, dropped when one of their specific kinds is also seen.
+  /// A general label is dropped when one of its specific kinds is also seen.
   static const _general = <String, Set<String>>{
     'egg': {'fried_egg', 'scrambled_eggs', 'omelet'},
-    'fish': {'tuna', 'salmon', 'sardine', 'mackerel', 'trout', 'seabass', 'snapper', 'swordfish', 'sushi'},
     'pasta': {'spaghetti', 'ramen'},
     'bread': {'white_bread', 'sandwich', 'croissant', 'muffin', 'donut', 'pancake', 'waffle', 'hamburger'},
-    'poultry': {'fried_chicken', 'grilled_chicken'},
-    'beef': {'steak'},
-    'vegetable': {
-      'broccoli',
-      'carrot',
-      'tomato',
-      'cucumber',
-      'corn',
-      'potato',
-      'salad',
-      'coleslaw',
-      'lettuce',
-      'stir_fry',
-    },
   };
 
-  static List<FoodItem> foods(List<VisionLabel> labels) {
-    final seen = <String, double>{};
+  static List<PhotoSuggestion> suggestions(List<VisionLabel> labels) {
+    final scores = <String, double>{};
     for (final l in labels) {
-      if (l.confidence < minConfidence || !labelToFood.containsKey(l.label)) continue;
-      if (l.confidence > (seen[l.label] ?? 0)) seen[l.label] = l.confidence;
+      if (!l.meetsPrecision || !mappings.containsKey(l.label)) continue;
+      if (l.confidence > (scores[l.label] ?? -1)) scores[l.label] = l.confidence;
     }
-    seen.removeWhere((label, _) => _general[label]?.any(seen.containsKey) ?? false);
+    scores.removeWhere((label, _) => _general[label]?.any(scores.containsKey) ?? false);
 
-    // Several labels can mean the same food; keep the most confident.
-    final byFood = <CatalogFood, double>{};
-    for (final MapEntry(key: label, value: confidence) in seen.entries) {
-      final food = FoodCatalog.byAlias(labelToFood[label]!)!;
-      if (confidence > (byFood[food] ?? 0)) byFood[food] = confidence;
+    // Synonyms ("cake", "cupcake") collapse into one suggestion, keeping the best score.
+    final best = <String, ({PhotoMapping mapping, double score})>{};
+    for (final MapEntry(key: label, value: score) in scores.entries) {
+      final mapping = mappings[label]!;
+      final key = mapping.food ?? 'search:${mapping.search}';
+      if (score > (best[key]?.score ?? -1)) best[key] = (mapping: mapping, score: score);
     }
-    final ranked = byFood.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final ranked = best.values.toList()..sort((a, b) => b.score.compareTo(a.score));
     return [
-      for (final MapEntry(key: food, value: confidence) in ranked.take(maxFoods))
-        food.item().copyWith(confidence: (confidence * 100).round() / 100),
+      for (final r in ranked.take(maxSuggestions))
+        PhotoSuggestion(label: r.mapping.label, searchTerm: r.mapping.search, foodName: r.mapping.food),
     ];
   }
 }

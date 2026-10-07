@@ -12,11 +12,14 @@ import '../services/photo_service.dart';
 /// starts, so a slow, failed or interrupted analysis never loses the meal.
 /// Nothing is logged until the person reviews the draft.
 class ScanController extends ChangeNotifier {
-  ScanController({required this.store, required this.analysis, required this.photos});
+  ScanController({required this.store, required this.analysis, required this.photos, this.photoInUse});
 
   final LocalStore store;
   final FoodAnalysisService analysis;
   final PhotoService photos;
+
+  /// True when a logged meal uses this photo — discarding a draft then keeps the file.
+  final bool Function(String photoPath)? photoInUse;
 
   List<ScanDraft> _drafts = [];
   final Set<Future<void>> _inFlight = {};
@@ -69,7 +72,15 @@ class ScanController extends ChangeNotifier {
     try {
       final bytes = await photos.readBytes(draft.photoPath);
       final r = await analysis.analyze(bytes);
-      result = draft.copyWith(status: DraftStatus.ready, items: r.items, isDemo: r.isDemo, sampleName: r.sampleName);
+      result = draft.copyWith(
+        status: DraftStatus.ready,
+        items: r.items,
+        suggestions: r.suggestions,
+        estimate: r.estimate,
+        notice: r.notice,
+        isDemo: r.isDemo,
+        sampleName: r.sampleName,
+      );
     } on FoodAnalysisException catch (e) {
       result = draft.copyWith(status: DraftStatus.failed, error: 'Couldn’t estimate this photo (${e.message}).');
     } catch (_) {
@@ -79,13 +90,16 @@ class ScanController extends ChangeNotifier {
     await _save(result);
   }
 
-  /// Removes the draft and its photo (nothing was logged).
+  /// Removes the draft and its photo (nothing was logged). An analysis still
+  /// running for it can't bring it back, and a photo that a logged meal uses
+  /// is kept.
   Future<void> discard(String id) async {
     final draft = _byId(id);
     if (draft == null) return;
     _drafts = _drafts.where((d) => d.id != id).toList();
     _notify();
     await store.deleteDraft(id);
+    if (photoInUse?.call(draft.photoPath) ?? false) return;
     await photos.delete(draft.photoPath);
   }
 

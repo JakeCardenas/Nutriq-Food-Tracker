@@ -14,6 +14,9 @@ import '../services/coach/coach_service.dart' show DaySummary;
 
 /// The meal log, "My foods" and scan feedback. Meals are small, so the whole
 /// log is kept in memory and grouped into logical days on demand.
+/// A saved meal ([before] null when new) or a deleted one ([after] null).
+typedef MealChange = ({Meal? before, Meal? after});
+
 class MealLogController extends ChangeNotifier {
   MealLogController(this._store, {required this._dayStartHour, required this._deletePhoto});
 
@@ -21,10 +24,11 @@ class MealLogController extends ChangeNotifier {
   final int Function() _dayStartHour;
   final Future<void> Function(String photoPath) _deletePhoto;
 
-  final _saved = StreamController<Meal>.broadcast();
+  final _changes = StreamController<MealChange>.broadcast();
 
   /// Emits each meal right after it's saved (used for the Apple Health write-once hook).
-  Stream<Meal> get mealSaved => _saved.stream;
+  /// Every saved or deleted meal: `before` is null for a new meal, `after` is null for a deletion.
+  Stream<MealChange> get mealChanges => _changes.stream;
 
   List<Meal> _meals = [];
   List<SavedFood> _savedFoods = [];
@@ -71,23 +75,33 @@ class MealLogController extends ChangeNotifier {
   ];
 
   Future<void> saveMeal(Meal meal) async {
+    final before = _byId(meal.id);
     _meals = [..._meals.where((m) => m.id != meal.id), meal]..sort((a, b) => a.loggedAt.compareTo(b.loggedAt));
     notifyListeners();
     await _store.upsertMeal(meal);
-    _saved.add(meal);
+    _changes.add((before: before, after: meal));
+  }
+
+  Meal? _byId(String id) {
+    for (final m in _meals) {
+      if (m.id == id) return m;
+    }
+    return null;
   }
 
   @override
   void dispose() {
-    _saved.close();
+    _changes.close();
     super.dispose();
   }
 
   Future<void> deleteMeal(Meal meal) async {
+    final before = _byId(meal.id) ?? meal;
     _meals = _meals.where((m) => m.id != meal.id).toList();
     notifyListeners();
     await _store.deleteMeal(meal.id);
     if (meal.photoPath != null) await _deletePhoto(meal.photoPath!);
+    if (!_changes.isClosed) _changes.add((before: before, after: null));
   }
 
   Future<void> deleteAllMeals() async {

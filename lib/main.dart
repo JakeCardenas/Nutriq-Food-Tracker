@@ -10,6 +10,7 @@ import 'app/session.dart';
 import 'data/cloud_repository.dart';
 import 'data/sqlite_local_store.dart';
 import 'data/supabase_coach_backend.dart';
+import 'services/food_analysis/photo_estimate_backend.dart';
 import 'data/supabase_cloud_repository.dart';
 import 'services/auth/auth_service.dart';
 import 'services/auth/supabase_auth_service.dart';
@@ -31,6 +32,7 @@ Future<void> main() async {
   AuthService auth = const DisabledAuthService();
   CloudRepository? cloud;
   SupabaseCoachBackend? coachBackend;
+  PhotoEstimateBackend? photoEstimates;
   if (Env.cloudConfigured) {
     try {
       await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
@@ -38,6 +40,7 @@ Future<void> main() async {
       auth = SupabaseAuthService(client);
       cloud = SupabaseCloudRepository(client);
       if (Env.aiCoachEnabled) coachBackend = SupabaseCoachBackend(client);
+      if (Env.photoEstimatesEnabled) photoEstimates = SupabasePhotoEstimateBackend(client);
     } catch (e) {
       debugPrint('Supabase not available, staying local-only: $e');
     }
@@ -52,6 +55,7 @@ Future<void> main() async {
     analysis: Platform.isIOS ? OnDeviceFoodAnalysisService() : const NoPhotoRecognitionService(),
     coach: DemoCoachService(),
     coachBackend: coachBackend,
+    photoEstimates: photoEstimates,
     health: Platform.isIOS ? HealthKitService() : const UnsupportedHealthService(),
   );
 

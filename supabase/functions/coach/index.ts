@@ -30,7 +30,7 @@ const MAX_INPUT_MESSAGES = 40;
 const MAX_TURNS = 16;
 const MAX_MESSAGE_CHARS = 2000;
 const MAX_CONTEXT_CHARS = 20000;
-const MAX_BODY_CHARS = 120000;
+const MAX_BODY_BYTES = 120000;
 const MAX_REPLY_TOKENS = 1024;
 
 export type CoachEnv = { supabaseUrl: string; anonKey: string; anthropicKey?: string };
@@ -59,6 +59,40 @@ function eventStream(events: unknown[]): Response {
   return new Response(body, { status: 200, headers: SSE_HEADERS });
 }
 
+/**
+ * Reads the request body as text, but never more than [max] bytes: a larger declared length is refused
+ * up front, and a request that grows past the limit is cancelled as soon as it does. Null = refused.
+ */
+async function readBody(req: Request, max: number): Promise<string | null> {
+  const declared = Number(req.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > max) return null;
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > max) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 export async function handle(req: Request, deps: CoachDeps): Promise<Response> {
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const authorization = req.headers.get("authorization");
@@ -67,22 +101,23 @@ export async function handle(req: Request, deps: CoachDeps): Promise<Response> {
   const { supabaseUrl, anonKey, anthropicKey } = deps.env;
   if (!supabaseUrl || !anonKey) return json({ error: "misconfigured" }, 500);
 
-  const raw = await req.text();
-  if (raw.length > MAX_BODY_CHARS) return json({ error: "bad_request" }, 400);
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return json({ error: "bad_request" }, 400);
-  }
-  const parsed = parseRequest(body);
-  if (typeof parsed === "string") return json({ error: "bad_request", detail: parsed }, 400);
-
   const asCaller = { apikey: anonKey, authorization };
   try {
+    // Who is calling — before anything of the request is read.
     const userRes = await deps.fetch(`${supabaseUrl}/auth/v1/user`, { headers: asCaller });
-    const user = userRes.ok ? await userRes.json() : null;
+    const user = userRes.ok ? await userRes.json().catch(() => null) : null;
     if (!user || typeof user.id !== "string") return json({ error: "not_signed_in" }, 401);
+
+    const raw = await readBody(req, MAX_BODY_BYTES);
+    if (raw === null) return json({ error: "bad_request" }, 400);
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return json({ error: "bad_request" }, 400);
+    }
+    const parsed = parseRequest(body);
+    if (typeof parsed === "string") return json({ error: "bad_request", detail: parsed }, 400);
 
     if (!anthropicKey) return json({ error: "not_configured" }, 503);
 

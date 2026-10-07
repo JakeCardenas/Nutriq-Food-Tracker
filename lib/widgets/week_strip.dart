@@ -77,6 +77,8 @@ class _Day extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       selected: selected,
+      // The gesture below is hidden by excludeSemantics, so the node needs its own action for VoiceOver.
+      onTap: onTap,
       label: '${longDate(summary.day)}${logged ? ', about ${fmtKcal(kcal)} calories' : ', nothing logged'}',
       excludeSemantics: true,
       child: GestureDetector(

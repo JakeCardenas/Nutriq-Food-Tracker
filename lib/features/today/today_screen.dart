@@ -129,7 +129,7 @@ class _TodayScreenState extends State<TodayScreen> {
                     onReview: () => MealFlows.reviewDraft(context, d),
                     onRetry: () => scope.scans.retry(d.id),
                     onManual: () => MealFlows.manualFromDraft(context, d),
-                    onDiscard: () => scope.scans.discard(d.id),
+                    onDiscard: () => MealFlows.discardDraft(context, d),
                   ),
                 ),
             ],

@@ -15,7 +15,7 @@ class NoPhotoRecognitionService implements FoodAnalysisService {
   bool get recognizesPhotos => false;
 
   @override
-  String get label => 'Describe it · food list';
+  String get label => 'Not available · type it in';
 
   @override
   Future<FoodAnalysisResult> analyze(Uint8List imageBytes) =>

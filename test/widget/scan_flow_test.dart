@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nutriq/domain/models/meal.dart';
 import 'package:nutriq/domain/models/scan_draft.dart';
+import 'package:nutriq/features/meal_editor/meal_editor_screen.dart';
 import 'package:nutriq/features/scan/meal_flows.dart';
 import 'package:nutriq/services/food_analysis/food_analysis_service.dart';
 import 'package:nutriq/services/photo_service.dart';
@@ -24,6 +27,26 @@ class _FailingAnalysis implements FoodAnalysisService {
   Future<FoodAnalysisResult> analyze(Uint8List imageBytes) async {
     calls++;
     throw const FoodAnalysisException('timed out');
+  }
+}
+
+/// Analysis that finishes only when the test says so (the draft stays "analyzing").
+class _GatedAnalysis implements FoodAnalysisService {
+  final gate = Completer<FoodAnalysisResult>();
+  @override
+  bool get isDemo => false;
+  @override
+  bool get recognizesPhotos => true;
+  @override
+  String get label => 'Gated test analysis';
+  @override
+  Future<FoodAnalysisResult> analyze(Uint8List imageBytes) => gate.future;
+}
+
+/// The analyzing card animates continuously, so step frames instead of settling.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
   }
 }
 
@@ -66,7 +89,7 @@ void main() {
     expect(deps.log.meals.single.source, MealSource.demoScan);
     expect(deps.log.meals.single.photoPath, 'meal_photos/test.jpg');
     expect(deps.scans.drafts, isEmpty);
-    expect(deps.photos.deleted, isEmpty, reason: 'the logged meal keeps its photo');
+    expect(deps.photos.deleted, ['/fake/photo.jpg'], reason: 'only the temporary copy goes; the meal keeps its photo');
     expect(find.text('Estimate ready'), findsNothing);
   });
 
@@ -100,11 +123,87 @@ void main() {
     expect(analysis.calls, 2);
     expect(find.text('Couldn’t analyze'), findsOneWidget);
 
+    await tester.tap(find.byTooltip('Discard scan'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Discard'));
     await tester.pumpAndSettle();
     expect(deps.scans.drafts, isEmpty);
-    expect(deps.photos.deleted, ['meal_photos/test.jpg']);
+    expect(deps.photos.deleted, ['/fake/photo.jpg', 'meal_photos/test.jpg']);
     expect(deps.log.meals, isEmpty);
+  });
+
+  testWidgets('a draft can be discarded while it is analyzing — after confirming — and stays gone', (tester) async {
+    final analysis = _GatedAnalysis();
+    final deps = await TestDeps.create(analysis: analysis);
+    await deps.pumpApp(tester);
+    await _openAddMenu(tester);
+    await tester.tap(find.text('Photo library'));
+    await _frames(tester);
+    expect(find.text('Analyzing your meal…'), findsOneWidget);
+    // Its own accessible button (named by its tooltip), separate from the card's review action.
+    final semantics = tester.ensureSemantics();
+    final discard = tester.getSemantics(find.byTooltip('Discard scan')).getSemanticsData();
+    semantics.dispose();
+    expect(discard.tooltip, 'Discard scan');
+    expect(discard.hasAction(SemanticsAction.tap), isTrue, reason: 'reachable with VoiceOver / TalkBack');
+
+    await tester.tap(find.byTooltip('Discard scan'));
+    await _frames(tester);
+    expect(find.text('Discard this scan?'), findsOneWidget);
+    expect(find.textContaining('Meals you’ve already logged aren’t affected'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await _frames(tester);
+    expect(deps.scans.drafts, hasLength(1), reason: 'cancel keeps it');
+
+    await tester.tap(find.byTooltip('Discard scan'));
+    await _frames(tester);
+    await tester.tap(find.text('Discard'));
+    await _frames(tester);
+    expect(deps.scans.drafts, isEmpty);
+    expect(deps.photos.deleted, contains('meal_photos/test.jpg'));
+
+    analysis.gate.complete(const FoodAnalysisResult(items: [], isDemo: false));
+    await deps.scans.waitForIdle();
+    await tester.pumpAndSettle();
+    expect(deps.scans.drafts, isEmpty, reason: 'a late result doesn’t bring it back');
+    expect(find.text('Analyzing your meal…'), findsNothing);
+  });
+
+  testWidgets('discarding a ready draft doesn’t open its review', (tester) async {
+    final deps = await TestDeps.create();
+    await deps.pumpApp(tester);
+    await _openAddMenu(tester);
+    await tester.tap(find.text('Photo library'));
+    await tester.pumpAndSettle();
+    expect(find.text('Estimate ready'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Discard scan'));
+    await tester.pumpAndSettle();
+    expect(find.byType(MealEditorScreen), findsNothing, reason: 'the review didn’t open');
+    await tester.tap(find.text('Discard'));
+    await tester.pumpAndSettle();
+    expect(deps.scans.drafts, isEmpty);
+    expect(find.text('Estimate ready'), findsNothing);
+  });
+
+  testWidgets('discarding a draft never deletes a photo a logged meal uses', (tester) async {
+    final deps = await TestDeps.create(
+      meals: [
+        Meal(
+          id: 'm',
+          loggedAt: DateTime.now(),
+          type: MealType.lunch,
+          source: MealSource.scan,
+          items: const [],
+          photoPath: 'meal_photos/test.jpg',
+        ),
+      ],
+    );
+    final draft = await deps.scans.startScan('meal_photos/test.jpg');
+    await deps.scans.waitForIdle();
+    await deps.scans.discard(draft.id);
+    expect(deps.scans.drafts, isEmpty);
+    expect(deps.photos.deleted, isNot(contains('meal_photos/test.jpg')));
   });
 
   testWidgets('a denied photo library explains what to do', (tester) async {

@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import '../../domain/models/food_item.dart';
+import '../../domain/models/photo_estimate.dart';
+import '../../domain/models/photo_suggestion.dart';
 
 /// Turns a meal photo into suggested foods.
 ///
@@ -22,9 +24,26 @@ abstract interface class FoodAnalysisService {
 }
 
 class FoodAnalysisResult {
-  const FoodAnalysisResult({required this.items, required this.isDemo, this.sampleName});
+  const FoodAnalysisResult({
+    required this.items,
+    required this.isDemo,
+    this.sampleName,
+    this.suggestions = const [],
+    this.estimate,
+    this.notice,
+  });
 
+  /// Foods with nutrition, pre-filled in the review (demo samples).
   final List<FoodItem> items;
+
+  /// Foods the photo might contain, for the person to choose from (on-device recognition).
+  final List<PhotoSuggestion> suggestions;
+
+  /// The optional cloud photo estimate (candidate foods with nutrition sources), for review.
+  final PhotoEstimate? estimate;
+
+  /// Why the result is limited, shown in the review.
+  final String? notice;
   final bool isDemo;
 
   /// Name of the demo sample used, for the demo banner.

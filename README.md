@@ -25,7 +25,7 @@ Without the config file the app still works fully; the sign-in options are simpl
 
 | Synced to Supabase (signed in only) | Always stays on the phone |
 |---|---|
-| Profile answers and goals (calorie range, protein reference) | **Meal photos** (never uploaded) |
+| Profile answers and goals (calorie range, protein reference) | **Meal photos** (only a smaller copy leaves the phone, and only with cloud photo estimates turned on — below) |
 | Settings (units, day start) | **Apple Health data** (steps, workouts, energy, weight) |
 | Meals and their foods | Scans that are still drafts |
 | My foods (saved foods) | Coach chats (not saved anywhere — see the AI coach below for what it sends) |
@@ -35,6 +35,13 @@ Without the config file the app still works fully; the sign-in options are simpl
 summary — goal, age group (not exact age), calorie range, protein reference, body weight for adults, today's meals
 and the last 7 days' totals, and up to 20 saved foods — through Nutriq's `coach` server function to Anthropic's
 Claude. Never photos, notes, Apple Health data, sex or height. The server stores only a per-day message count.
+
+**Photo estimates (signed in, opt-in, off by default):** only after the person agrees, a **smaller copy** of a meal
+photo (≤ 1024 px, re-encoded without EXIF/GPS or camera details) goes through Nutriq's `scan-photo` server function
+to **Google's Gemini** (`gemini-3.5-flash-lite`). On Gemini's free tier, Google's terms let it use submitted content
+and answers to improve its products, and human reviewers may read it — the consent screen says so. Nutriq's server
+doesn't store or log the photo, the prompt or Gemini's answer; it stores only a per-day scan count and a cache of
+public USDA nutrition values.
 
 Each signed-in account has its own database file and photo folder on the device, so switching accounts never shows
 another person's meals. Offline edits are kept and sync later; if two devices edit the same thing, the newer edit
@@ -52,9 +59,10 @@ wins and the older one is listed under **Settings → Account** where it can be 
 | Email sign-up/sign-in, confirmation and password-reset links, sync, conflict review, account deletion | **Real** once Supabase is configured (see below) |
 | Sign in with Google | Code is ready; needs Google Cloud client IDs and the Supabase Google provider — **off until you configure it** |
 | Sign in with Apple | Code is ready, iOS only; needs the paid Apple Developer Program and the Supabase Apple provider — **off by default** |
-| Apple Health (read steps, workouts, active energy, weight; optionally write meal nutrition) | **Real, iOS only, opt-in from Settings.** Android Health Connect isn't supported yet. |
+| Apple Health (read steps, workouts, active energy, weight; optionally write meal nutrition) | **Real, iOS only, opt-in from Settings.** A meal written to Health is updated there when you change its time or amounts, and removed when you delete it (only what Nutriq wrote; not yet checked on a device). Android Health Connect isn't supported yet. |
 | **Describing meals** | **Real, on the device.** Type a meal like “century tuna and 2 cups of rice” and Nutriq's built-in food list (~120 everyday foods, many Filipino staples) fills in typical calories and macros — understood: amounts (2, ½, “two”, “2 and a half”, x3), units (cups, cans, pieces, slices, grams, oz…), brands and small typos. Anything it doesn't know is listed, not guessed. The same list powers **Add an ingredient** search. |
-| **Food recognition from photos** | **Real, on the iPhone, free.** Apple's built-in image recognizer (Vision) looks at the photo on the phone — it never leaves the device — and the foods it sees (rice, tuna, fried egg, spaghetti, fried chicken, soup, fruit, ~110 labels) are matched to Nutriq's food list. It can't see brands or amounts, so every food starts at a usual portion, unsure ones say “check this”, and the review offers “Anything missing? Describe it”. No food found → it asks what's in the photo. Android: describe instead. Meals logged earlier with the old sample scanner still show “Demo”. |
+| **Photo estimates (cloud, optional)** | **Off until you set it up; then opt-in per person.** A smaller, metadata-free copy of the photo goes to Gemini, which returns only *candidates*: a likely dish (+ alternatives), the foods it can see (each with up to 2 other names when it can't tell), possible hidden ingredients listed separately, a portion range in grams when it can judge one, and what a photo can't show. It never gives calories. Hidden ingredients are never counted unless you tap **Include in estimate**, and generic labels (“chicken”, “rice”) never match one specific food in Nutriq's list. Nutriq matches each component to its own food list (exact names), else USDA FoodData Central (optional key, cached) — used only when the entry clearly is that food; when USDA has several entries that disagree on calories or protein, the review lists them (with USDA's name and data type) for you to pick one or leave it uncounted — else marks it “No nutrition data found”; calories and protein are computed as grams × per-100 g values. The review shows “≈ kcal · g protein” with every amount marked estimated until you change it, lets you remove foods, look up unmatched ones and add missed ones, and adds nothing until you tap **Add N foods** and **Log meal**. Any failure (offline, timeout, quotas, not set up) falls back to on-device suggestions (iPhone) or describing (Android), with a notice. Works on Android only when this is enabled and agreed to. **Not yet validated against real meals** — see [docs/PHOTO_ESTIMATE_EVALUATION.md](docs/PHOTO_ESTIMATE_EVALUATION.md). |
+| **Photo suggestions** | **iPhone only, on the device, free — suggestions, not detection.** Apple's built-in, general-purpose image classifier (Vision, ~1,300 scene and object labels; not a food model) looks at the photo on the phone — the photo is never uploaded. At most three labels that clear Apple's own per-label precision target become suggestions: a direct match only when the label names one food (banana, fried egg, hamburger…), otherwise a search of the food list (rice, tuna, coffee…). Broad labels (food, fish, meat) and different dishes are ignored. Nothing is added to the meal until you pick a suggestion and choose its serving; nutrition is an estimate from typical values. It can't see brands, recipes, cooking oil or portion size, and it hasn't been measured on real meal photos. Android: no recognition — the camera keeps the photo and you type what's in it (“Take photo”). Meals logged earlier with the old sample scanner still show “Demo”. |
 | **Coach** | **AI coach (Claude Sonnet 5.5) for signed-in people who turn it on**, through the `coach` Edge Function — **off until you deploy it, add your Anthropic key and set `AI_COACH_ENABLED`** (see below). Replies stream in and are labelled “AI coach · can make mistakes”; 30 messages per person per day. Everyone else — and anyone offline or over the limit — gets the scripted **“Demo coach”**, and the reply says why. The safety rules run on the phone *and* on the server. |
 
 ---
@@ -130,10 +138,14 @@ Full click-by-click steps are in [docs/SETUP_AND_TESTING.md](docs/SETUP_AND_TEST
    key as the Edge Function secret `ANTHROPIC_API_KEY` (in the Supabase dashboard only — never in the app, git or
    chat), deploy `supabase/functions/coach` with “Verify JWT with legacy secret” off, then set
    `"AI_COACH_ENABLED": true` in `config/nutriq.json`. Until then nobody is offered the AI coach.
-6. **Google / Apple:** see the guide. Until then the buttons stay hidden.
+6. **Photo estimates (optional):** run `supabase/migrations/20261007120000_photo_scan.sql` once, add the Edge
+   Function secrets `GEMINI_API_KEY` (required) and optionally `FDC_API_KEY` and `SCAN_DAILY_LIMIT` (in the
+   Supabase dashboard only), deploy `supabase/functions/scan-photo` with “Verify JWT with legacy secret” off, then
+   set `"PHOTO_ESTIMATES_ENABLED": true` in `config/nutriq.json`. Step-by-step: setup guide section 8.
+7. **Google / Apple:** see the guide. Until then the buttons stay hidden.
 
 To check the database rules locally against a throwaway Postgres (two users, cross-user access attempts, and the
-coach's daily allowance):
+coach and photo-scan allowances and nutrition cache):
 
 ```bash
 bash supabase/tests/run_rls_tests_locally.sh
@@ -143,6 +155,10 @@ To test the `coach` function (fake network — no Supabase or Anthropic calls; n
 
 ```bash
 node --test supabase/tests/coach_function_test.ts
+```
+
+```bash
+node --test supabase/tests/scan_photo_function_test.ts
 ```
 
 ---
@@ -207,13 +223,15 @@ Testers can rate scans in **Settings → Scan feedback** and copy a summary to s
 ```
 lib/
   app/        env (build-time config), session wiring, AppScope, theme tokens, formatting
-  domain/     models, StartingPoint + CalorieBounds, FoodCatalog, MealDescription, PhotoFoodMapper, streak, units
+  domain/     models, StartingPoint + CalorieBounds, FoodCatalog, MealDescription, PhotoFoodMapper,
+              PhotoEstimate + resolver, streak, units
   data/       LocalStore (SQLite, per-account files), sync engine, Supabase repository + mappers, local import
-  services/   auth (Supabase, Google, Apple), food analysis (on-device Vision / describe), coach, Apple Health, photos
-  state/      session, profile, meal log, scans (drafts), sync, health, coach controllers
+  services/   auth (Supabase, Google, Apple), food analysis (on-device Vision / cloud estimate / describe), coach,
+              Apple Health, photos
+  state/      session, profile, meal log, scans (drafts), photo analysis (consent + routing), sync, health, coach
   features/   onboarding, account, today, scan (camera), meal editor, history, coach, settings, shell
   widgets/    design system: cards, rings, buttons, controls, spring sheet (NqSheetRoute), week strip
-supabase/     migrations, Edge Functions (delete-account, coach), local RLS + coach tests
+supabase/     migrations, Edge Functions (delete-account, coach, scan-photo), local SQL + function tests
 test/         unit + widget tests (run `flutter test`)
 docs/         setup guide, design specs and plans
 ```
@@ -228,13 +246,32 @@ sign-in, re-applies the safety rules (and reads the caller's own profile row, so
 applies), spends one message from `nutriq_coach_take_turn()`, and calls Claude with a safety-first system prompt. The
 model is `MODEL` at the top of `supabase/functions/coach/index.ts`.
 
-**Photo recognition:** `OnDeviceFoodAnalysisService` sends the photo bytes over the `com.prodbyjake.nutriq/food_vision`
-channel to `FoodVisionPlugin` (in `ios/Runner/AppDelegate.swift`), which runs Apple's `VNClassifyImageRequest` on the
-phone; `PhotoFoodMapper` turns its labels into catalog foods (confidence ≥ 0.25, at most 5, general labels like
-“fish” dropped when “tuna” is seen). For brand- and portion-level accuracy you'd need a vision model on **your own
-server** (which keeps the AI-provider key): implement `FoodAnalysisService` with `isDemo: false` and swap it in
-`lib/main.dart`. Add an explicit consent step before any photo is uploaded, and
-update the privacy text in Settings. (`DemoFoodAnalysisService` remains only as a test double for the draft flow.)
+**Photo suggestions:** `OnDeviceFoodAnalysisService` sends the photo bytes over the
+`com.prodbyjake.nutriq/food_vision` channel to `FoodVisionPlugin` (in `ios/Runner/AppDelegate.swift`), which runs
+Apple's `VNClassifyImageRequest` on the phone and reports each label's raw score plus whether it clears precision 0.7
+on Apple's per-label precision/recall curve. `PhotoFoodMapper` keeps at most three of those labels as
+`PhotoSuggestion`s (direct food or search term; synonyms and general/specific pairs merged). The score only orders
+suggestions — it is not shown and is not a probability. The review's “Might be in your photo” card adds a food only
+through the serving sheet. Better recognition would need a food-specific model (on-device Core ML, or a vision model
+on your own server with explicit photo-upload consent). (`DemoFoodAnalysisService` remains only as a test double for
+the draft flow.)
+
+**Photo estimates:** `PhotoAnalysisController` (one per session) decides per photo: on-device by default; the cloud
+path only when the build has `PHOTO_ESTIMATES_ENABLED`, the person is signed in, and they agreed (stored per account
+on the phone as `scan_cloud`). `preparePhotoForUpload` (isolate) turns the photo upright, shrinks it to ≤ 1024 px and
+re-encodes it from pixels, so no metadata survives. `SupabasePhotoEstimateBackend` posts it to `scan-photo`, which
+checks the sign-in before reading the (size-capped) upload, strips any remaining JPEG metadata, spends one turn from `nutriq_scan_take_turn(p_limit)`, calls Gemini with a JSON
+schema that has no nutrition or confidence fields, validates/clamps the answer, and looks components up in USDA
+FoodData Central (`chooseFdcMatch`: clear matches only, else options for the person; `fdc_food_cache` /
+`fdc_query_cache`, server-only). `PhotoEstimateResolver` matches Nutriq's food
+list first (`MealDescription.exactMatch`), and `PhotoEstimateCard` computes everything from grams × per-100 g. The
+model is `MODEL` at the top of `supabase/functions/scan-photo/index.ts` (an optional `GEMINI_MODEL` secret can select
+the one allow-listed comparison model). `tool/photo_eval.dart` scores labelled meals for that comparison.
+
+**Photos after capture:** the camera keeps a capture on a **Use this photo?** step; **Retake** / **Discard** delete it
+through `PhotoService`, and only **Use photo** calls `MealFlows.startDraft` (which also removes the temporary file once
+the photo is stored). On Today every `DraftCard` has a discard button (any state) → `MealFlows.discardDraft` asks
+first → `ScanController.discard`, which ignores late analysis results and never deletes a photo a logged meal uses.
 
 **Rename:** `lib/app/app_config.dart` (`AppConfig.appName`), `ios/Runner/Info.plist` (`CFBundleDisplayName`),
 `android/app/src/main/AndroidManifest.xml` (`android:label`).

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nutriq/domain/meal_description.dart';
 import 'package:nutriq/domain/models/food_item.dart';
@@ -96,5 +98,34 @@ void main() {
   test('every item gets its own id', () {
     final items = _items('rice, rice and rice');
     expect(items.map((i) => i.id).toSet(), hasLength(3));
+  });
+
+  test('amounts that can’t be right are flagged to check, never logged', () {
+    for (final text in [
+      '1/0 cup rice',
+      '0/0 cup rice',
+      '0 cups rice',
+      '99999 cups rice',
+      '101 eggs',
+      '100000 g rice',
+    ]) {
+      final r = MealDescription.parse(text);
+      expect(r.items, isEmpty, reason: text);
+      expect(r.unclearAmounts, [text], reason: text);
+      expect(r.unmatched, isEmpty, reason: '“$text” is a known food with a wrong amount, not an unknown food');
+    }
+    final mixed = MealDescription.parse('2 cups rice and 1/0 egg');
+    expect(mixed.items.single.name, 'White rice, cooked');
+    expect(mixed.unclearAmounts, ['1/0 egg']);
+  });
+
+  test('every food it returns can be saved and synced (finite, ≤ 100 servings, ≤ 5,000 kcal each)', () {
+    for (final text in ['100 eggs', '2 1/2 cups rice', '½ cup rice', '1500 g rice', '3 cups milk']) {
+      for (final item in _items(text)) {
+        expect(() => jsonEncode(item.toJson()), returnsNormally, reason: text);
+        expect(item.servings, inInclusiveRange(0.01, 100), reason: text);
+        expect(item.caloriesPerServing, inInclusiveRange(0, 5000), reason: text);
+      }
+    }
   });
 }

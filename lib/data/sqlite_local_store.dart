@@ -272,6 +272,10 @@ class SqliteLocalStore implements LocalStore {
     'written_at': _clock(),
   }, conflictAlgorithm: ConflictAlgorithm.replace);
 
+  @override
+  Future<void> forgetHealthWrite(String mealId) =>
+      _db.delete('health_writes', where: 'meal_id = ?', whereArgs: [mealId]);
+
   // ── sync bookkeeping ───────────────────────────────────────────────────
 
   Future<SyncRecord?> _profileRecord({bool pendingOnly = false}) async {

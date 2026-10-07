@@ -58,10 +58,12 @@ You'll see the welcome screen. Go through onboarding or tap **Skip setup**. Ever
 device. Settings shows “On this phone only — accounts and sync aren't set up in this build.”
 
 The Simulator has no camera: **+ → Scan food** shows “Camera isn't available” with **Choose from library**.
-On iPhone, photos are recognised **on the phone** with Apple's built-in recognizer: Today shows “Foods found” with
-what it saw (or “No food found”), and the review lets you fix amounts and **describe anything it missed** (“century
-tuna and 2 cups of rice” → **Add foods**). **+ → Describe meal** works without a photo. The recognizer sees kinds of
-food, not brands or portions.
+On iPhone, Apple's built-in image recognizer looks at the photo **on the phone** (it's never uploaded) and Today
+shows “Ready to review · Might include …” (or “No food suggestions”). These are guesses from a general-purpose
+recognizer, not a food scanner: in the review, **Add** a suggestion (you choose the serving), **Find** it in the food
+list when it could be several foods, or dismiss it, and **describe anything it missed** (“century tuna and 2 cups of
+rice” → **Add foods**). Nothing is added until you choose it. On Android the menu says **Take photo**: the photo is
+kept and you type what's in it. **+ → Describe meal** works without a photo.
 
 ---
 
@@ -211,7 +213,117 @@ migration) and `DAILY_LIMIT` in the function. The model is `MODEL` at the top of
 
 ---
 
-## 8. Sign in with Google and Apple (optional)
+## 8. Photo estimates (optional — Gemini + USDA)
+
+Off by default. When you set it up, signed-in people can **choose** to send a meal photo for an estimate; everyone
+else keeps the free, on-device path (iPhone suggestions, or describing the meal).
+
+**What happens, step by step**
+
+1. After the shutter, the camera shows **Use this photo?** with **Use photo**, **Retake** and **Discard**. Retake and
+   Discard (or closing the camera) delete the capture — nothing is saved or sent; only **Use photo** continues.
+   The first time someone uses or picks a photo, Nutriq asks **“Get a photo estimate?”** and explains: the photo
+   leaves the phone (a smaller copy without location or camera details) and goes through Nutriq's server to Google's
+   Gemini; on the free tier, Google's terms let it use what's sent to improve its products and people at Google may
+   review it; calories and protein come from food data, not from the AI; Nutriq's server doesn't keep the photo;
+   estimates can be wrong; there's a daily limit. **Keep photos on this
+   phone** means nothing is ever uploaded (they can turn it on later in **Settings → Photo estimates**).
+2. If they agree, the app shrinks the photo to ≤ 1024 px and re-encodes it as a JPEG from its pixels — no EXIF, GPS
+   or camera data — and sends it to the `scan-photo` function with their sign-in.
+3. The function checks the sign-in **before reading the upload**, then reads at most 2.2 MB of it (a larger declared
+   size is refused straight away, and a longer upload is cut off as soon as it passes the limit). It checks the
+   consent flag, refuses anything that isn't a JPEG or is over 1.5 MB, strips any remaining metadata, and takes one
+   turn from the person's daily scan allowance (separate from the coach's).
+4. It asks Gemini (`gemini-3.5-flash-lite`) for **candidates only**: likely dish and alternatives; up to 8 foods it
+   can actually see (a mixed dish such as adobo or sinigang is one food), each with up to 2 other names when it
+   can't tell which food it is; separately, up to 4 *possible hidden ingredients* (oil, sauce, filling) with no
+   amount; a portion range in grams only when one can reasonably be judged; and what a photo can't show. The request
+   schema has no calorie, nutrient or confidence fields, and the answer is validated and clamped — duplicates are
+   dropped, and a range tighter than about ±10 % is widened around the same middle, because a photo can't give an
+   exact weight.
+5. Each component is looked up in USDA FoodData Central if `FDC_API_KEY` is set (a POST search with the data types as
+   an array, as the FDC guide asks; the key goes in a header). An entry is used only when it's
+   clearly the same food: every word of the name appears in USDA's description, and every such entry in the results
+   agrees on calories (within 15%) and protein (within 20%). If they disagree (“chicken, fried”: breast or wing?) or
+   only part of the name matches, the app gets up to 4 entries to choose from instead; entries that don't share the
+   food's main word are never offered. Clear answers are cached by FDC id for 30 days in Postgres (readable only by
+   the server); ambiguous ones are looked up again next time.
+6. The app matches each component to Nutriq's food list first (exact names only — generic labels such as “chicken”,
+   “fish”, “rice” or “vegetables” never match one specific food there), else the USDA entry (shown with
+   its USDA name and data type, e.g. “USDA FoodData Central (SR Legacy): …”). When there are several possible
+   entries it lists them with their data type and kcal/protein per 100 g; that food isn't counted until the person
+   picks one (**Change** undoes a pick), or they can leave it uncounted, **Find** it in Nutriq's list or remove it.
+   With nothing at all it shows “No nutrition data found”. Calories and protein are **grams × per-100 g values**,
+   shown as “≈ … kcal · … g
+   protein” (or “No nutrition counted yet” when nothing could be matched). Every amount says *Estimated from photo*,
+   *Typical serving — not from the photo* or, after **Choose amount**, *Starting amount* until the person changes it.
+   They can remove foods, look up unmatched ones, describe missed ones, and nothing is added until **Add N foods to
+   meal** — or logged until **Log meal**. Tapping **Log meal** while estimated foods are still waiting in the card
+   asks first (“Photo estimate not added”), so they aren't silently left out. **Could also be** choices switch a food
+   to one of its alternatives (matched again to Nutriq's list; otherwise “No nutrition data found”). **Possible
+   ingredients** are listed separately and never counted — not in the card, not on Today — until the person taps
+   **Include in estimate**.
+7. If anything fails — offline, timeout, the daily limit, Gemini's free quota, not set up — the photo still reaches the
+   review with a notice, plus on-device suggestions on iPhone, or the describe box on Android.
+8. Every scan on Today — analyzing, ready or failed — has a discard (trash) button. It asks first, then removes the
+   unfinished scan and its photo; a result that arrives later doesn't bring it back, and a photo that a logged meal
+   uses is never deleted.
+
+The server never stores or logs photos, prompts or Gemini's answers — only status codes, the per-day count and the
+public USDA cache.
+
+**Set it up** (Nutriq never needs these keys in the app, a file, git or chat)
+
+1. **Gemini key:** aistudio.google.com → **Get API key** → create a key. The free tier is enough to try it.
+2. **USDA key (optional, recommended):** api.data.gov/signup → the key is emailed to you. Without it, only foods in
+   Nutriq's own list get nutrition.
+3. **Supabase → Edge Functions → Secrets:** add `GEMINI_API_KEY`, and optionally `FDC_API_KEY` and
+   `SCAN_DAILY_LIMIT` (photos per person per day, 1–200, default 10) → **Save**.
+4. **SQL Editor → New query**, after the coach migration (section 7):
+   ```bash
+   pbcopy < supabase/migrations/20261007120000_photo_scan.sql
+   ```
+   Paste — the first line reads `-- Nutriq photo estimates: daily scan allowance and a nutrition lookup cache.` —
+   and **Run** once. You should see “Success. No rows returned.”
+5. **Edge Functions → Deploy a new function → Via Editor**, name `scan-photo`:
+   ```bash
+   pbcopy < supabase/functions/scan-photo/index.ts
+   ```
+   Paste over the editor's contents — the first line reads `// Supabase Edge Function: scan-photo` — and **Deploy
+   function**. On its **Settings** tab turn **off** “Verify JWT with legacy secret” → **Save**.
+   (CLI: `supabase functions deploy scan-photo --no-verify-jwt`.)
+6. In `config/nutriq.json` set `"PHOTO_ESTIMATES_ENABLED": true`, then rebuild the app.
+7. **Try it** signed in: **+ → Photo library** → **Send photos for estimates** → Today shows **Photo estimate
+   ready** → check each food and amount → **Add N foods to meal** → **Log meal**.
+
+**Free tier, privacy and quotas**
+
+- Free-tier (unpaid) Gemini use: Google uses submitted content and responses to improve its products, and human
+  reviewers may read them. Don't encourage sending private photos. On a Cloud project with billing enabled, the paid
+  terms apply instead (content isn't used that way); in the EEA, Switzerland and the UK, the paid terms apply to all
+  use. Re-check Google's current terms before relying on either.
+- Gemini's free tier has per-project rate limits shared by all your users; when they're hit, people see “The photo
+  estimate service has reached its free limit for now” and get the on-device fallback.
+- USDA FoodData Central allows about 1,000 requests per hour per IP address; the cache keeps repeat foods off it.
+- The production model is `MODEL` at the top of `supabase/functions/scan-photo/index.ts`. For a side-by-side
+  comparison, the optional secret `GEMINI_MODEL` may be set to the one reviewed alternative (`gemini-3.8-flash`);
+  any other value makes the function answer “not set up”. See the evaluation guide before switching.
+
+**Accuracy limits — read before trusting the numbers**
+
+A single photo can't show what's under the top layer, cooking oil, sauces, the recipe, or the real weight. Portion
+ranges are visual guesses; USDA entries are generic (and the matching rules above are word-based — they can still
+pick a related entry when USDA has only one); Filipino dishes get nutrition only where Nutriq's own list has
+them (Nutriq doesn't bundle PhilFCT data). **This hasn't been measured on real meals yet.** To check it: weigh the
+foods on a kitchen scale, write down what's really on the plate, take the photo, and compare the suggested foods and
+the estimated kcal/protein with your numbers across a few dozen varied meals.
+
+
+How to measure it — and to compare a candidate model on the same photos — is in
+[PHOTO_ESTIMATE_EVALUATION.md](PHOTO_ESTIMATE_EVALUATION.md) (`dart run tool/photo_eval.dart meals.csv` scores it).
+---
+
+## 9. Sign in with Google and Apple (optional)
 
 The buttons stay hidden until these are configured. Nothing here goes in git.
 
@@ -247,7 +359,7 @@ a one-time notice about the new sign-in method.
 
 ---
 
-## 9. Apple Health (iOS)
+## 10. Apple Health (iOS)
 
 Optional and off by default; it has nothing to do with Supabase.
 
@@ -263,7 +375,7 @@ The free Personal Team can sign HealthKit builds. Android Health Connect isn't s
 
 ---
 
-## 10. Testing checklist and troubleshooting
+## 11. Testing checklist and troubleshooting
 
 **Automated**
 
@@ -284,14 +396,21 @@ node --test supabase/tests/coach_function_test.ts
 ```
 
 ```bash
+node --test supabase/tests/scan_photo_function_test.ts
+```
+
+```bash
 flutter build ios --release --no-codesign --dart-define-from-file=config/nutriq.json
 ```
 
 **By hand (Simulator or iPhone)**
 
 - [ ] Onboarding: answers save; an under-18 age gives no calorie targets; “Pregnant” gives no calculated targets.
-- [ ] iPhone: photo of a plate of rice and eggs → Today says “Foods found · White rice · Egg” → review → fix the
-      portions → **Log meal**. A photo with no food → “No food found” → describe it.
+- [ ] iPhone: photo of a meal → Today says “Ready to review · Might include …” → review: nothing is in Ingredients
+      yet; **Add** a suggestion → choose the serving → it appears; dismiss a wrong one; **Log meal** saves only what
+      you added. A photo with no food → “No food suggestions” → describe it.
+- [ ] Record, for a few real meals, what was on the plate vs. what was suggested — that's the only evidence of how
+      useful suggestions are (none has been collected yet).
 - [ ] + → Describe meal → type something Nutriq doesn't know → it's listed under “Not found”, nothing is guessed.
 - [ ] Close the describe screen after picking a photo → nothing is logged and the photo isn't kept.
 - [ ] Sheets: drag one down slowly and let go before halfway — it settles back; flick it down — it closes.
@@ -304,6 +423,15 @@ flutter build ios --release --no-codesign --dart-define-from-file=config/nutriq.
       coach** on (asks first) → replies stream in, labelled “AI coach · can make mistakes”.
 - [ ] Coach: “how do I make myself throw up” → a caring safety reply that points to real support, instantly.
 - [ ] Coach in airplane mode → scripted reply that says you're offline.
+- [ ] Camera: take a photo → **Use this photo?** — **Retake** goes back to the camera, **Discard** closes with no scan;
+      **Use photo** adds the scan to Today. Each scan card's trash button asks first and removes it (also while
+      analyzing).
+- [ ] Photo estimates (when set up): the first photo asks first; **Keep photos on this phone** → nothing uploaded
+      (no “Photo estimate ready”). Turn it on in Settings → photo → review shows ≈ kcal/protein, sources (USDA name
+      + data type; for an ambiguous food, pick one of the listed entries, then **Change**) and
+      “Estimated from photo”; change an amount (→ “Your amount”), remove a food, **Find** an unmatched one (then
+      **Log meal** before **Add** → “Photo estimate not added”), **Add**, **Log meal**. Airplane mode → “Couldn't
+      reach Nutriq's server” notice + fallback.
 
 **Troubleshooting**
 
@@ -314,11 +442,15 @@ flutter build ios --release --no-codesign --dart-define-from-file=config/nutriq.
 | Email link says “can't open page” on a Mac | Expected; sign in in the app. On an iPhone the link opens Nutriq |
 | Delete account says “Nothing was deleted … not deployed” | Deploy the function (section 6) |
 | Delete account says “Please sign in again” | The session expired: sign out and in, then retry |
-| Google button missing | Both `GOOGLE_*_CLIENT_ID` values must be set (section 8) |
+| Google button missing | Both `GOOGLE_*_CLIENT_ID` values must be set (section 9) |
 | Apple button missing | iOS only, and `APPLE_SIGN_IN_ENABLED` must be `true` with the paid-team entitlements |
 | Apple Health numbers stay “—” | Check Health app → Profile → Apps → Nutriq; add sample data on the Simulator |
 | Personal Team app stops opening after 7 days | Re-run it from Xcode/Flutter (free provisioning expires) |
 | No “Try the AI coach?” card | `AI_COACH_ENABLED` isn't `true` in `config/nutriq.json`, or you're not signed in |
+| No “Get a photo estimate?” / no **Settings → Photo estimates** | `PHOTO_ESTIMATES_ENABLED` isn't `true` in `config/nutriq.json`, or you're not signed in |
+| “Photo estimates aren't set up on the server yet” | Section 8: the `GEMINI_API_KEY` secret, the photo-scan migration and the `scan-photo` function |
+| “…reached its free limit for now” | Gemini's free quota for your project; try later or enable billing (paid terms) |
+| “The nutrition lookup was busy…” / foods with “No nutrition data found” | USDA rate limit or no `FDC_API_KEY`; use **Find** to pick a food |
 | Coach: “isn't set up on the server yet” | Do section 7: the `ANTHROPIC_API_KEY` secret, the coach migration and the `coach` function |
 | Coach: “Sign in again to use the AI coach” | The session expired: sign out and back in |
 | Coach: “couldn't answer just now” | Check the `coach` function's **Logs** in Supabase and your Anthropic credit/spend limit |

@@ -139,7 +139,16 @@ final List<CatalogFood> _foods = [
     0.3,
     defaultUnit: _cup,
     portions: _p({'cup': ('1 cup cooked', 158), 'bowl': ('1 bowl', 240), 'plate': ('1 plate', 240)}),
-    aliases: ['rice', 'white rice', 'steamed rice', 'plain rice', 'cooked rice', 'jasmine rice', 'kanin'],
+    aliases: [
+      'rice',
+      'white rice',
+      'steamed rice',
+      'plain rice',
+      'cooked rice',
+      'jasmine rice',
+      'kanin',
+      'puting kanin',
+    ],
   ),
   CatalogFood(
     'Brown rice, cooked',
@@ -159,7 +168,7 @@ final List<CatalogFood> _foods = [
     4,
     defaultUnit: _cup,
     portions: _p({'cup': ('1 cup', 160), 'plate': ('1 plate', 240), 'bowl': ('1 bowl', 240)}),
-    aliases: ['garlic rice', 'garlic fried rice', 'sinangag'],
+    aliases: ['garlic rice', 'garlic fried rice', 'sinangag', 'sinangag na kanin'],
   ),
   CatalogFood(
     'Fried rice',
@@ -345,7 +354,7 @@ final List<CatalogFood> _foods = [
     14.8,
     defaultUnit: _piece,
     portions: _p({'piece': ('1 large egg', 46)}),
-    aliases: ['egg', 'fried egg', 'sunny side up', 'sunny side up egg', 'itlog'],
+    aliases: ['egg', 'fried egg', 'sunny side up', 'sunny side up egg', 'itlog', 'pritong itlog'],
   ),
   CatalogFood(
     'Egg, boiled',
@@ -365,7 +374,7 @@ final List<CatalogFood> _foods = [
     11,
     defaultUnit: _piece,
     portions: _p({'piece': ('1 egg', 61), 'cup': ('1 cup', 220)}),
-    aliases: ['scrambled egg', 'omelette', 'omelet', 'torta'],
+    aliases: ['scrambled egg', 'omelette', 'omelet', 'torta', 'tortang itlog'],
   ),
   CatalogFood(
     'Tuna flakes in oil, canned',
@@ -512,7 +521,7 @@ final List<CatalogFood> _foods = [
     16,
     defaultUnit: _piece,
     portions: _p({'piece': ('1 piece', 120)}),
-    aliases: ['fried chicken'],
+    aliases: ['fried chicken', 'pritong manok'],
     brands: {'chickenjoy': 'Jollibee Chickenjoy', 'chicken joy': 'Jollibee Chickenjoy'},
   ),
   CatalogFood(
@@ -613,7 +622,7 @@ final List<CatalogFood> _foods = [
     10,
     defaultUnit: _piece,
     portions: _p({'piece': ('1 fish', 130)}),
-    aliases: ['fish', 'tilapia', 'fried tilapia', 'fried fish', 'pritong isda'],
+    aliases: ['fish', 'tilapia', 'fried tilapia', 'fried fish', 'pritong isda', 'pritong tilapia'],
   ),
   CatalogFood(
     'Milkfish (bangus), fried',
@@ -623,7 +632,7 @@ final List<CatalogFood> _foods = [
     12,
     defaultUnit: _serving,
     portions: _p({'serving': ('1 serving', 120)}),
-    aliases: ['bangus', 'milkfish', 'daing na bangus', 'fried bangus'],
+    aliases: ['bangus', 'milkfish', 'daing na bangus', 'fried bangus', 'pritong bangus'],
   ),
   CatalogFood(
     'Dried fish (tuyo, daing)',
@@ -705,7 +714,7 @@ final List<CatalogFood> _foods = [
     2.5,
     defaultUnit: 'bowl',
     portions: _p({'bowl': ('1 bowl', 350), 'cup': ('1 cup', 240)}),
-    aliases: ['tinola', 'chicken tinola'],
+    aliases: ['tinola', 'chicken tinola', 'tinolang manok'],
   ),
   CatalogFood(
     'Bulalo (beef soup)',
@@ -715,7 +724,7 @@ final List<CatalogFood> _foods = [
     5,
     defaultUnit: 'bowl',
     portions: _p({'bowl': ('1 bowl', 400), 'cup': ('1 cup', 240)}),
-    aliases: ['bulalo', 'nilaga', 'beef nilaga', 'beef soup'],
+    aliases: ['bulalo', 'nilaga', 'beef nilaga', 'beef soup', 'nilagang baka'],
   ),
   CatalogFood(
     'Kare-kare',

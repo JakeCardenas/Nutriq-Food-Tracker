@@ -5,9 +5,12 @@ import 'models/food_item.dart';
 
 /// Foods read from a description, plus the parts Nutriq didn't recognise.
 class MealParse {
-  const MealParse({required this.items, required this.unmatched});
+  const MealParse({required this.items, required this.unmatched, this.unclearAmounts = const []});
   final List<FoodItem> items;
   final List<String> unmatched;
+
+  /// Known foods whose amount can't be right ("1/0 cup rice", "99999 cups") — left out for the person to check.
+  final List<String> unclearAmounts;
 }
 
 /// Turns "century tuna and 2 cups of rice" into foods from [FoodCatalog] —
@@ -24,6 +27,7 @@ abstract final class MealDescription {
 
     final items = <FoodItem>[];
     final unmatched = <String>[];
+    final unclear = <String>[];
     for (final raw in t.split(RegExp(r'\s*(?:[,;+\n]|\band\b|\bwith\b|\bplus\b|\bthen\b|\balso\b)\s*'))) {
       final chunk = raw.replaceAll('_', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
       if (chunk.isEmpty || _filler.contains(chunk)) continue;
@@ -33,9 +37,24 @@ abstract final class MealDescription {
         unmatched.add(chunk);
         continue;
       }
-      items.add(match.food.item(quantity: amount.quantity, unit: amount.unit, brand: match.brand));
+      final item = match.food.item(quantity: amount.quantity, unit: amount.unit, brand: match.brand);
+      if (_plausible(item)) {
+        items.add(item);
+      } else {
+        unclear.add(chunk);
+      }
     }
-    return MealParse(items: items, unmatched: unmatched);
+    return MealParse(items: items, unmatched: unmatched, unclearAmounts: unclear);
+  }
+
+  /// Within what can be saved and synced (the cloud accepts 0–100 servings and up to 5,000 kcal per
+  /// serving) — so "1/0 cup" (infinite), "0/0" (not a number), "0 cups" or "99999 cups" never reach a meal.
+  static bool _plausible(FoodItem i) {
+    final values = [i.servings, i.caloriesPerServing, i.proteinPerServing, i.carbsPerServing, i.fatPerServing];
+    return values.every((v) => v.isFinite && v >= 0) &&
+        i.servings > 0 &&
+        i.servings <= 100 &&
+        i.caloriesPerServing <= 5000;
   }
 
   // ── Text clean-up ─────────────────────────────────────────────────────────
@@ -268,6 +287,74 @@ abstract final class MealDescription {
       .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
+
+  /// The food whose name, alias or brand is exactly [text] (ignoring case,
+  /// punctuation and plurals) — no partial or typo matches, and none of the
+  /// [_genericAliases]. For suggestions that come from elsewhere (e.g. a
+  /// photo), where a near miss is worse than no match.
+  static CatalogFood? exactMatch(String text) {
+    final cleaned = _normalizeAlias(text);
+    if (cleaned.isEmpty) return null;
+    final singular = cleaned.split(' ').map(_singular).join(' ');
+    for (final (alias, food, _) in _index) {
+      if ((alias == cleaned || alias == singular) && !_genericAliases.contains(alias)) return food;
+    }
+    return null;
+  }
+
+  /// Everyday words that a typed description may use for one food ("chicken" →
+  /// chicken breast), but that name a whole category when they come from a
+  /// photo label — so they never match one specific food there.
+  static const _genericAliases = {
+    'chicken',
+    'pork',
+    'beef',
+    'fish',
+    'egg',
+    'itlog',
+    'tuna',
+    'rice',
+    'bread',
+    'pasta',
+    'spaghetti',
+    'pancit',
+    'pansit',
+    'noodle soup',
+    'ramen',
+    'cereal',
+    'porridge',
+    'soup',
+    'clear soup',
+    'curry',
+    'vegetables',
+    'veggies',
+    'gulay',
+    'mixed vegetables',
+    'salad',
+    'sausage',
+    'bbq',
+    'barbecue',
+    'inihaw',
+    'satay',
+    'kebab',
+    'dumpling',
+    'gyoza',
+    'wonton',
+    'spring roll',
+    'egg roll',
+    'steamed bun',
+    'rice cake',
+    'juice',
+    'shake',
+    'coffee',
+    'tea',
+    'chocolate',
+    'biscuit',
+    'custard',
+    'bread roll',
+    'sandwich',
+    'nilaga',
+  };
 
   static ({CatalogFood food, String? brand})? _match(String text) {
     final cleaned = _normalizeAlias(text);

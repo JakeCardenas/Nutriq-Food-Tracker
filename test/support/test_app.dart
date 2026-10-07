@@ -13,6 +13,7 @@ import 'package:nutriq/domain/models/settings.dart';
 import 'package:nutriq/domain/models/user_profile.dart';
 import 'package:nutriq/services/auth/auth_service.dart';
 import 'package:nutriq/services/coach/coach_backend.dart';
+import 'package:nutriq/services/food_analysis/photo_estimate_backend.dart';
 import 'package:nutriq/services/coach/demo_coach_service.dart';
 import 'package:nutriq/services/food_analysis/demo_food_analysis_service.dart';
 import 'package:nutriq/services/food_analysis/food_analysis_service.dart';
@@ -33,6 +34,9 @@ class FakePhotoService implements PhotoService {
   final deleted = <String>[];
   bool deletedAll = false;
 
+  /// Paths whose deletion fails (like a file the system won't let go of).
+  final failDeleting = <String>{};
+
   @override
   Future<PhotoPickResult> pick(PhotoSource source) async => next;
   @override
@@ -42,7 +46,11 @@ class FakePhotoService implements PhotoService {
   @override
   Future<Uint8List> readBytes(String storedPath) async => Uint8List.fromList(List.filled(64, 7));
   @override
-  Future<void> delete(String storedPath) async => deleted.add(storedPath);
+  Future<void> delete(String storedPath) async {
+    if (failDeleting.contains(storedPath)) throw const FileSystemException('busy');
+    deleted.add(storedPath);
+  }
+
   @override
   Future<void> deleteAll() async => deletedAll = true;
   @override
@@ -75,6 +83,8 @@ class TestDeps {
     AuthService? auth,
     CloudRepository? cloud,
     CoachBackend? coachBackend,
+    PhotoEstimateBackend? photoEstimates,
+    Future<Uint8List> Function(Uint8List)? preparePhoto,
   }) async {
     final store = MemoryLocalStore(profile: profile, settings: settings, meals: meals);
     final photos = FakePhotoService();
@@ -82,6 +92,8 @@ class TestDeps {
       analysis: analysis ?? DemoFoodAnalysisService(delay: Duration.zero),
       coach: DemoCoachService(replyDelay: Duration.zero),
       coachBackend: coachBackend,
+      photoEstimates: photoEstimates,
+      preparePhoto: preparePhoto,
       health: health ?? const UnsupportedHealthService(),
     );
     final authService = auth ?? const DisabledAuthService();

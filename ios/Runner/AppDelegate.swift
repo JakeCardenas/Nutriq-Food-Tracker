@@ -21,8 +21,10 @@ import Vision
   }
 }
 
-/// On-device food recognition with Apple's built-in image classifier (Vision).
-/// The photo is analysed on the iPhone and never leaves it.
+/// On-device photo labels from Apple's built-in, general-purpose image
+/// classifier (Vision, ~1,300 scene and object labels — not a food model).
+/// The photo is analysed on the iPhone and never leaves it. Nutriq turns a few
+/// of the labels into suggestions the person confirms; see PhotoFoodMapper.
 final class FoodVisionPlugin: NSObject, FlutterPlugin {
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
@@ -50,7 +52,13 @@ final class FoodVisionPlugin: NSObject, FlutterPlugin {
     }
   }
 
-  /// Labels with their confidence (0–1), most confident first.
+  /// Precision target on Apple's per-label precision/recall curve. A label
+  /// only counts as a possible suggestion when its score clears the threshold
+  /// that gives this precision on Apple's evaluation data (not on Nutriq's).
+  static let precisionTarget: Float = 0.7
+
+  /// Labels with Vision's raw score (0–1, not a probability) and whether the
+  /// score meets [precisionTarget], highest score first.
   static func classify(_ data: Data) throws -> [[String: Any]] {
     let request = VNClassifyImageRequest()
     #if targetEnvironment(simulator)
@@ -70,7 +78,14 @@ final class FoodVisionPlugin: NSObject, FlutterPlugin {
     return (request.results ?? [])
       .filter { $0.confidence >= 0.05 }
       .prefix(40)
-      .map { ["label": $0.identifier, "confidence": Double($0.confidence)] }
+      .map { observation in
+        [
+          "label": observation.identifier,
+          "confidence": Double(observation.confidence),
+          "meetsPrecision": observation.hasPrecisionRecallCurve
+            && observation.hasMinimumRecall(0.01, forPrecision: precisionTarget),
+        ]
+      }
   }
 
   /// Camera photos are often stored sideways with an orientation flag.

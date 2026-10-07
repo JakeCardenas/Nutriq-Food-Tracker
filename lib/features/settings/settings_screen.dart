@@ -12,6 +12,7 @@ import '../../widgets/controls.dart';
 import '../../widgets/sheet.dart';
 import '../../widgets/surfaces.dart';
 import '../coach/ai_consent.dart';
+import '../scan/photo_consent.dart';
 import '../goals/goal_actions.dart';
 import '../shell/home_shell.dart';
 import 'account_section.dart';
@@ -142,6 +143,26 @@ class SettingsScreen extends StatelessWidget {
                   ],
                 ),
               ),
+            if (scope.photoAnalysis.cloudAvailable)
+              ListenableBuilder(
+                listenable: scope.photoAnalysis,
+                builder: (context, _) => NqGroup(
+                  header: 'Photo estimates',
+                  footer:
+                      'Sends a smaller copy of each meal photo (no location or camera details) to Google’s Gemini, '
+                      'whose free-tier terms let Google use it to improve its products. Off: photos stay on this phone.',
+                  children: [
+                    NqRow(
+                      icon: Icons.document_scanner_outlined,
+                      title: 'Cloud photo estimates',
+                      trailing: Switch.adaptive(
+                        value: scope.photoAnalysis.cloudEnabled,
+                        onChanged: (on) => setPhotoEstimatesFromSettings(context, scope.photoAnalysis, on),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             NqGroup(
               header: 'Privacy & data',
               footer: account
@@ -159,13 +180,16 @@ class SettingsScreen extends StatelessWidget {
                         ? 'In your account (Supabase, protected so only you can read it): your profile and goals, '
                               'meals and their foods, saved foods and scan ratings.\n\nOnly on this phone: meal photos, '
                               'Apple Health data, scans that are still drafts, and coach chats (which aren’t saved at '
-                              'all). Photo recognition (Apple’s built-in recognizer), describing meals (Nutriq’s food '
-                              'list) and the demo coach all run on this phone.\n\nIf you turn on the AI '
+                              'all). Photo suggestions (Apple’s built-in image recognizer, iPhone only), describing '
+                              'meals (Nutriq’s food list) and the demo coach all run on this phone. Meal photos are '
+                              'only uploaded if you turn on cloud photo estimates: then a smaller copy (no location '
+                              'or camera details) goes through Nutriq’s server to Google’s Gemini, whose free-tier '
+                              'terms let Google use it to improve its products; Nutriq keeps only a daily count.\n\nIf you turn on the AI '
                               'coach, each question is sent with your goals and a summary of recent meals to Anthropic '
                               '(Claude) through Nutriq’s server to get an answer. Nutriq keeps only a daily count of '
                               'messages, never what they say.'
                         : 'On this phone only: your optional profile and goals, meals and their photos, saved foods '
-                              'and scan ratings. Coach chats aren’t saved. Nothing is sent anywhere — photo recognition, '
+                              'and scan ratings. Coach chats aren’t saved. Nothing is sent anywhere — photo suggestions, '
                               'describing meals and the demo coach all run on this phone.',
                   ),
                 ),

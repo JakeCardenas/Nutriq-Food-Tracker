@@ -60,6 +60,10 @@ abstract interface class HealthService {
 
   /// Writes one food entry (calories + macros) for [meal]. Returns false if HealthKit refused it.
   Future<bool> writeMeal(Meal meal);
+
+  /// Deletes the nutrition Nutriq wrote for [meal] (matched by its exact logged time). Only Nutriq's
+  /// own samples can be deleted. Returns false if HealthKit refused.
+  Future<bool> deleteMeal(Meal meal);
 }
 
 class UnsupportedHealthService implements HealthService {
@@ -76,4 +80,7 @@ class UnsupportedHealthService implements HealthService {
   Future<HealthSnapshot> readDay(DateTime start, DateTime end) async => const HealthSnapshot();
   @override
   Future<bool> writeMeal(Meal meal) async => false;
+
+  @override
+  Future<bool> deleteMeal(Meal meal) async => false;
 }

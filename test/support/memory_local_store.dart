@@ -150,6 +150,8 @@ class MemoryLocalStore implements LocalStore {
   Future<bool> wasWrittenToHealth(String mealId) async => _healthWrites.contains(mealId);
   @override
   Future<void> recordHealthWrite(String mealId) async => _healthWrites.add(mealId);
+  @override
+  Future<void> forgetHealthWrite(String mealId) async => _healthWrites.remove(mealId);
 
   SyncRecord _profileRecord() => SyncRecord(
     entity: SyncEntity.profile,

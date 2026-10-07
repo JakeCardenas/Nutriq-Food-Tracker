@@ -4,6 +4,7 @@ import '../services/auth/auth_service.dart';
 import '../services/food_analysis/food_analysis_service.dart';
 import '../services/photo_service.dart';
 import '../state/coach_controller.dart';
+import '../state/photo_analysis_controller.dart';
 import '../state/health_controller.dart';
 import '../state/meal_log_controller.dart';
 import '../state/profile_controller.dart';
@@ -30,6 +31,7 @@ class AppScope extends InheritedWidget {
   SyncController? get sync => session.sync;
   PhotoService get photos => session.photos;
   FoodAnalysisService get analysis => session.analysis;
+  PhotoAnalysisController get photoAnalysis => session.photoAnalysis;
 
   static AppScope of(BuildContext context) {
     final scope = context.getInheritedWidgetOfExactType<AppScope>();

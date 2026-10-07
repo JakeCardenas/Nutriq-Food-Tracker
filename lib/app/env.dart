@@ -20,6 +20,11 @@ abstract final class Env {
   /// Edge Function is deployed with its key (docs/SETUP_AND_TESTING.md §7).
   static const aiCoachEnabled = bool.fromEnvironment('AI_COACH_ENABLED');
 
+  /// Offer optional cloud photo estimates to signed-in people. Turn on only
+  /// after the `scan-photo` Edge Function is deployed with GEMINI_API_KEY
+  /// (docs/SETUP_AND_TESTING.md). Uploads still need each person's consent.
+  static const photoEstimatesEnabled = bool.fromEnvironment('PHOTO_ESTIMATES_ENABLED');
+
   /// True when real Supabase values were supplied (not the example placeholders).
   static bool get cloudConfigured =>
       supabaseUrl.startsWith('https://') &&

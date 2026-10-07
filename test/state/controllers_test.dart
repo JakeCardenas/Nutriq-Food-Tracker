@@ -46,6 +46,19 @@ void main() {
       expect(log.mealsForDay(DateTime(2026, 10, 7)).map((m) => m.id), ['late']);
     });
 
+    test('saving reports the previous version, and deleting reports the meal', () async {
+      final changes = <MealChange>[];
+      final sub = log.mealChanges.listen(changes.add);
+      final m = _meal('m', DateTime(2026, 10, 6, 12));
+      await log.saveMeal(m);
+      final moved = m.copyWith(loggedAt: DateTime(2026, 10, 6, 13));
+      await log.saveMeal(moved);
+      await log.deleteMeal(moved);
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
+      expect(changes.map((c) => (c.before?.loggedAt.hour, c.after?.loggedAt.hour)), [(null, 12), (12, 13), (13, null)]);
+    });
+
     test('changing a meal time moves it to another day and persists', () async {
       final m = _meal('m', DateTime(2026, 10, 6, 12));
       await log.saveMeal(m);

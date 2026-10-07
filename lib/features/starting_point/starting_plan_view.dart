@@ -303,6 +303,7 @@ class _PlanTile extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: '${macro.label}: $value $unit${onTap == null ? ', derived' : ', tap to adjust'}',
+      onTap: onTap,
       excludeSemantics: true,
       child: onTap == null ? tile : Pressable(onTap: onTap, child: tile),
     );

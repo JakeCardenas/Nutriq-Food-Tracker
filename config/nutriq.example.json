@@ -5,5 +5,6 @@
   "GOOGLE_WEB_CLIENT_ID": "",
   "GOOGLE_IOS_CLIENT_ID": "",
   "APPLE_SIGN_IN_ENABLED": false,
-  "AI_COACH_ENABLED": false
+  "AI_COACH_ENABLED": false,
+  "PHOTO_ESTIMATES_ENABLED": false
 }

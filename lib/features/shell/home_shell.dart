@@ -233,6 +233,7 @@ class _TabButton extends StatelessWidget {
       selected: selected,
       button: true,
       label: '$label tab',
+      onTap: onTap,
       excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -304,7 +305,11 @@ class _AddMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     final items = <({IconData icon, String label, Future<void> Function(BuildContext) action})>[
-      (icon: Icons.photo_camera_outlined, label: 'Scan food', action: MealFlows.openCamera),
+      (
+        icon: Icons.photo_camera_outlined,
+        label: AppScope.of(hostContext).analysis.recognizesPhotos ? 'Scan food' : 'Take photo',
+        action: MealFlows.openCamera,
+      ),
       (icon: Icons.photo_library_outlined, label: 'Photo library', action: MealFlows.pickFromLibrary),
       (icon: Icons.edit_note_rounded, label: 'Describe meal', action: MealFlows.openManual),
       (icon: Icons.bookmark_border_rounded, label: 'My foods', action: MealFlows.openMyFoods),

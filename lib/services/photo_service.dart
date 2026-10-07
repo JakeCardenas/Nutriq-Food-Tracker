@@ -41,6 +41,8 @@ abstract interface class PhotoService {
 
   File resolve(String storedPath);
   Future<Uint8List> readBytes(String storedPath);
+
+  /// Deletes a stored photo (relative path) or a temporary capture (absolute path).
   Future<void> delete(String storedPath);
 
   /// Removes every photo this service stored (used when deleting data).

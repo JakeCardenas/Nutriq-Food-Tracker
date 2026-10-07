@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +24,19 @@ Meal _meal(String id, {String? name}) => Meal(
   items: const [FoodItem(id: 'f', name: 'Rice', caloriesPerServing: 200)],
   name: name,
 );
+
+/// Analysis that finishes only when the test says so.
+class _GatedAnalysis implements FoodAnalysisService {
+  final gate = Completer<FoodAnalysisResult>();
+  @override
+  bool get isDemo => false;
+  @override
+  bool get recognizesPhotos => true;
+  @override
+  String get label => 'Gated';
+  @override
+  Future<FoodAnalysisResult> analyze(Uint8List imageBytes) => gate.future;
+}
 
 class _FlakyAnalysis implements FoodAnalysisService {
   bool fail = true;
@@ -167,6 +181,33 @@ void main() {
       await scans.load();
       expect(scans.drafts.single.status, DraftStatus.failed);
       expect(scans.drafts.single.error, contains('interrupted'));
+    });
+
+    test('discarding while the photo is being analyzed: a late result never brings it back', () async {
+      final analysis = _GatedAnalysis();
+      final scans = ScanController(store: store, analysis: analysis, photos: photos);
+      final draft = await scans.startScan('p/a.jpg');
+      await scans.discard(draft.id);
+      analysis.gate.complete(const FoodAnalysisResult(items: [], isDemo: false));
+      await scans.waitForIdle();
+      expect(scans.drafts, isEmpty);
+      expect(await store.scanDrafts(), isEmpty);
+      expect(photos.deleted, ['p/a.jpg']);
+    });
+
+    test('a photo that a logged meal already uses is never deleted with its draft', () async {
+      final scans = ScanController(
+        store: store,
+        analysis: DemoFoodAnalysisService(delay: Duration.zero),
+        photos: photos,
+        photoInUse: (path) => path == 'p/a.jpg',
+      );
+      final a = await scans.startScan('p/a.jpg');
+      await scans.waitForIdle();
+      await scans.discard(a.id);
+      expect(scans.drafts, isEmpty);
+      expect(await store.scanDrafts(), isEmpty);
+      expect(photos.deleted, isEmpty);
     });
 
     test('discarding removes the draft and its photo; logging keeps the photo', () async {

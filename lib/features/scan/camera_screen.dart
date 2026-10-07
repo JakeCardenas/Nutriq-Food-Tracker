@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_scope.dart';
 import '../../app/theme.dart';
+import '../../services/photo_service.dart';
 import '../../widgets/adaptive.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/labels.dart';
@@ -16,13 +18,16 @@ import 'meal_flows.dart';
 enum _CameraState { loading, ready, denied, unavailable }
 
 /// Full-screen meal camera: live preview with a framing guide, shutter, flash
-/// and photo library. A captured photo is saved on this phone as a draft and
-/// analyzed in the background — the person reviews it on Today before logging.
+/// and photo library. Captures can be discarded or retaken before they are
+/// saved as a draft and analyzed in the background.
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key, this.loadCameras = availableCameras});
+  const CameraScreen({super.key, this.loadCameras = availableCameras, @visibleForTesting this.initialCapture});
 
   /// Injectable for tests (the default asks the camera plugin).
   final Future<List<CameraDescription>> Function() loadCameras;
+
+  /// Starts on the "Use this photo?" step with this capture (widget tests have no camera).
+  final String? initialCapture;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -35,6 +40,10 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   bool _capturing = false;
   bool _shutterFlash = false;
   bool _busy = false;
+  late String? _capturedPath = widget.initialCapture;
+
+  /// Deletes temporary captures (they're never saved unless the person taps "Use photo").
+  late PhotoService _photos;
 
   @override
   void initState() {
@@ -44,8 +53,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _photos = AppScope.of(context).photos;
+  }
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    final capturedPath = _capturedPath;
+    if (capturedPath != null) unawaited(_deleteTempPhoto(capturedPath));
     _controller?.dispose();
     super.dispose();
   }
@@ -107,14 +124,58 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
     });
     try {
       final file = await controller.takePicture();
-      if (!mounted) return;
-      final toDescribe = await MealFlows.startDraft(context, file.path);
-      if (mounted) Navigator.pop(context, toDescribe);
+      if (!mounted) {
+        await _deleteTempPhoto(file.path);
+        return;
+      }
+      setState(() {
+        _capturedPath = file.path;
+        _capturing = false;
+        _shutterFlash = false;
+      });
     } catch (e) {
       if (mounted) {
         setState(() => _capturing = false);
         showToast(context, 'Couldn’t take the photo. Try again, or choose one from your library.');
       }
+    }
+  }
+
+  Future<void> _retake() async {
+    final path = _capturedPath;
+    if (path != null) await _deleteTempPhoto(path);
+    if (!mounted) return;
+    setState(() => _capturedPath = null);
+  }
+
+  Future<void> _discardCapturedPhoto() async {
+    if (_busy) return;
+    await _retake();
+    if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _useCapturedPhoto() async {
+    final path = _capturedPath;
+    if (path == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final toDescribe = await MealFlows.startDraft(context, path);
+      if (!mounted) return;
+      // startDraft has copied this temporary file into the managed photo store.
+      _capturedPath = null;
+      Navigator.pop(context, toDescribe);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      showToast(context, 'Couldn’t use this photo. You can retake it or try again.');
+    }
+  }
+
+  Future<void> _deleteTempPhoto(String path) async {
+    try {
+      await _photos.delete(path);
+    } catch (_) {
+      // The camera plugin owns this temporary directory; the system cleans it up later.
     }
   }
 
@@ -153,11 +214,14 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
         body: Stack(
           fit: StackFit.expand,
           children: [
-            if (_state == _CameraState.ready && controller != null) _Preview(controller: controller),
-            if (_state == _CameraState.ready) const _FrameGuide(),
+            if (_capturedPath case final path?)
+              Positioned.fill(child: Image.file(File(path), fit: BoxFit.contain))
+            else if (_state == _CameraState.ready && controller != null)
+              _Preview(controller: controller),
+            if (_state == _CameraState.ready && _capturedPath == null) const _FrameGuide(),
             if (_state == _CameraState.loading)
               const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
-            if (_state == _CameraState.denied || _state == _CameraState.unavailable)
+            if (_capturedPath == null && (_state == _CameraState.denied || _state == _CameraState.unavailable))
               _NoCamera(denied: _state == _CameraState.denied, busy: _busy, onLibrary: _library, onManual: _manual),
             AnimatedOpacity(
               opacity: _shutterFlash ? 0.7 : 0,
@@ -177,18 +241,22 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                         icon: Icons.close_rounded,
                         tooltip: 'Close camera',
                         onPhoto: true,
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: _capturedPath == null ? () => Navigator.pop(context) : _discardCapturedPhoto,
                       ),
                       Expanded(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Nutriq',
+                              _capturedPath == null ? 'Nutriq' : 'Use this photo?',
                               textAlign: TextAlign.center,
                               style: NqText.headline.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
                             ),
                             if (AppScope.of(context).analysis.isDemo) ...[const SizedBox(height: 6), const _DemoPill()],
+                            if (AppScope.of(context).photoAnalysis.cloudEnabled) ...[
+                              const SizedBox(height: 6),
+                              const _CloudPill(),
+                            ],
                             if (!AppScope.of(context).analysis.recognizesPhotos) ...[
                               const SizedBox(height: 6),
                               const _DescribeNextPill(),
@@ -207,7 +275,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                 ),
               ),
             ),
-            if (_state == _CameraState.ready)
+            if (_state == _CameraState.ready && _capturedPath == null)
               Align(
                 alignment: Alignment.bottomCenter,
                 child: _Controls(
@@ -219,6 +287,16 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
                   onLibrary: _library,
                 ),
               ),
+            if (_capturedPath != null)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: _CapturedPhotoActions(
+                  busy: _busy,
+                  onDelete: _discardCapturedPhoto,
+                  onRetake: _retake,
+                  onUse: _useCapturedPhoto,
+                ),
+              ),
           ],
         ),
       ),
@@ -227,6 +305,7 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
 
   void _showTips(BuildContext context) {
     final demo = AppScope.of(context).analysis.isDemo;
+    final cloud = AppScope.of(context).photoAnalysis.cloudEnabled;
     showNqSheet<void>(
       context,
       title: 'Getting a good estimate',
@@ -242,11 +321,17 @@ class _CameraScreenState extends State<CameraScreen> with WidgetsBindingObserver
             ),
             const SizedBox(height: NqSpace.lg),
           ],
-          for (final (icon, text) in const [
+          for (final (icon, text) in [
             (Icons.wb_sunny_outlined, 'Use good light and avoid strong shadows.'),
             (Icons.crop_free_rounded, 'Fit the whole plate inside the frame, shot from slightly above.'),
             (Icons.fact_check_outlined, 'You’ll review and correct every food before anything is logged.'),
-            (Icons.lock_outline_rounded, 'Your photo stays on this phone and is never uploaded.'),
+            cloud
+                ? (
+                    Icons.cloud_upload_outlined,
+                    'For a photo estimate, a smaller copy without location data is sent to Google’s Gemini. '
+                        'You can turn this off in Settings.',
+                  )
+                : (Icons.lock_outline_rounded, 'Your photo stays on this phone and is never uploaded.'),
           ])
             Padding(
               padding: const EdgeInsets.only(bottom: NqSpace.md),
@@ -414,6 +499,67 @@ class _Controls extends StatelessWidget {
   );
 }
 
+/// After the shutter: nothing is saved or sent until the person taps "Use photo".
+class _CapturedPhotoActions extends StatelessWidget {
+  const _CapturedPhotoActions({
+    required this.busy,
+    required this.onDelete,
+    required this.onRetake,
+    required this.onUse,
+  });
+
+  final bool busy;
+  final VoidCallback onDelete;
+  final VoidCallback onRetake;
+  final VoidCallback onUse;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    top: false,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Pressable(
+            onTap: busy ? null : onUse,
+            semanticLabel: 'Use photo',
+            child: Container(
+              height: 56,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: busy ? Colors.white54 : Colors.white,
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: ExcludeSemantics(
+                child: Text('Use photo', style: NqText.headline.copyWith(color: NqColors.ink)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              QuietButton(
+                label: 'Retake',
+                icon: Icons.replay_rounded,
+                color: Colors.white,
+                onPressed: busy ? null : onRetake,
+              ),
+              QuietButton(
+                label: 'Discard',
+                icon: Icons.delete_outline_rounded,
+                color: Colors.white,
+                onPressed: busy ? null : onDelete,
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Shown when the camera can't be used (denied, Simulator, or no camera).
 class _NoCamera extends StatelessWidget {
   const _NoCamera({required this.denied, required this.busy, required this.onLibrary, required this.onManual});
@@ -511,6 +657,21 @@ class _DescribeNextPill extends StatelessWidget {
     decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(999)),
     child: Text(
       'You’ll type what’s in it next',
+      style: NqText.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+    ),
+  );
+}
+
+/// Reminds the person that photo estimates send a copy of the photo to Google.
+class _CloudPill extends StatelessWidget {
+  const _CloudPill();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(999)),
+    child: Text(
+      'Photo estimate: a smaller copy goes to Google',
       style: NqText.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
     ),
   );

@@ -148,6 +148,52 @@ test("no Anthropic key on the server → 503 not_configured", async () => {
   assert.equal(anthropicCalls(b).length, 0);
 });
 
+test("the sign-in is checked before the request is read", async () => {
+  const bad = fakeBackend({ userStatus: 401, user: { msg: "bad jwt" } });
+  const req = new Request("https://example.supabase.co/functions/v1/coach", {
+    method: "POST",
+    headers: { authorization: "Bearer user-token", "content-type": "application/json" },
+    body: "{ not json — and never read",
+  });
+  assert.equal((await run(req, bad)).status, 401, "a bad token gets 401, not 400");
+  assert.equal(req.bodyUsed, false, "the body was never read");
+});
+
+test("an oversized request is refused without buffering it", async () => {
+  const declared = new Request("https://example.supabase.co/functions/v1/coach", {
+    method: "POST",
+    headers: { authorization: "Bearer user-token", "content-type": "application/json", "content-length": "5000000" },
+    body: "{}",
+  });
+  assert.equal((await run(declared, fakeBackend())).status, 400);
+  assert.equal(declared.bodyUsed, false, "a too-large declared size is refused up front");
+
+  const chunk = new Uint8Array(64 * 1024).fill(0x41);
+  let pulled = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (pulled >= 4_000_000) return controller.close();
+      pulled += chunk.length;
+      controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const streamed = new Request("https://example.supabase.co/functions/v1/coach", {
+    method: "POST",
+    headers: { authorization: "Bearer user-token", "content-type": "application/json" },
+    body,
+    duplex: "half",
+  } as RequestInit);
+  const b = fakeBackend();
+  assert.equal((await run(streamed, b)).status, 400);
+  assert.ok(cancelled, "the rest of the upload is cancelled");
+  assert.ok(pulled < 400_000, `read ${pulled} bytes`);
+  assert.equal(anthropicCalls(b).length, 0);
+});
+
 test("malformed requests → 400", async () => {
   const bad = [
     {},

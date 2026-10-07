@@ -47,6 +47,9 @@ abstract interface class LocalStore {
   Future<bool> wasWrittenToHealth(String mealId);
   Future<void> recordHealthWrite(String mealId);
 
+  /// The meal's Apple Health entry was deleted.
+  Future<void> forgetHealthWrite(String mealId);
+
   // ── sync bookkeeping ───────────────────────────────────────────────────
   /// True for account files: edits are tracked and deletions leave tombstones.
   bool get tracksChanges;

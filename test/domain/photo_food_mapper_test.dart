@@ -1,74 +1,139 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nutriq/domain/food_catalog.dart';
+import 'package:nutriq/domain/models/scan_draft.dart';
 import 'package:nutriq/domain/photo_food_mapper.dart';
 
-List<String> _names(List<VisionLabel> labels) => PhotoFoodMapper.foods(labels).map((i) => i.name).toList();
+/// A label that meets Apple's precision target (only those can be suggested).
+VisionLabel _strong(String label, double score) => (label: label, confidence: score, meetsPrecision: true);
+VisionLabel _weak(String label, double score) => (label: label, confidence: score, meetsPrecision: false);
+
+List<String> _labels(List<VisionLabel> labels) => PhotoFoodMapper.suggestions(labels).map((s) => s.label).toList();
 
 void main() {
-  test('every food label maps to a food in Nutriq’s list', () {
-    for (final entry in PhotoFoodMapper.labelToFood.entries) {
-      expect(FoodCatalog.byAlias(entry.value), isNotNull, reason: '${entry.key} → ${entry.value}');
-    }
+  group('what gets suggested', () {
+    test('only labels that meet Apple’s precision target, whatever their raw score', () {
+      expect(_labels([_weak('hamburger', 0.95), _strong('banana', 0.4)]), ['Banana']);
+    });
+
+    test('broad labels and labels for a different dish are never suggested', () {
+      final dropped = [
+        'food',
+        'meat',
+        'poultry',
+        'fish',
+        'seafood',
+        'vegetable',
+        'fruit',
+        'dessert',
+        'drink',
+        'paella',
+        'biryani',
+        'risotto',
+        'mackerel',
+        'trout',
+        'seabass',
+        'snapper',
+        'swordfish',
+        'cereal',
+        'coleslaw',
+        'lettuce',
+        'tableware',
+        'plate',
+        'bowl',
+      ];
+      expect(PhotoFoodMapper.suggestions([for (final l in dropped) _strong(l, 0.9)]), isEmpty);
+    });
+
+    test('a label that names one food is a direct match', () {
+      final s = PhotoFoodMapper.suggestions([_strong('fried_egg', 0.6)]).single;
+      expect(s.label, 'Fried egg');
+      expect(s.food?.name, 'Egg, fried');
+    });
+
+    test('a label that could be several foods becomes a search, not a guess', () {
+      final byLabel = {
+        for (final s in PhotoFoodMapper.suggestions([
+          _strong('tuna', 0.7),
+          _strong('rice', 0.6),
+          _strong('coffee', 0.5),
+        ]))
+          s.label: s,
+      };
+      expect(byLabel.keys, ['Tuna', 'Rice', 'Coffee']);
+      for (final s in byLabel.values) {
+        expect(s.food, isNull, reason: '${s.label} is ambiguous');
+      }
+      expect(byLabel['Tuna']!.searchTerm, 'tuna');
+      expect(
+        FoodCatalog.search('tuna').map((f) => f.name),
+        containsAll(['Tuna flakes in oil, canned', 'Tuna in water, canned']),
+      );
+    });
+
+    test('the general label gives way to a specific one', () {
+      expect(_labels([_strong('egg', 0.7), _strong('fried_egg', 0.5)]), ['Fried egg']);
+      expect(_labels([_strong('pasta', 0.7), _strong('spaghetti', 0.5)]), ['Spaghetti']);
+      expect(_labels([_strong('bread', 0.7), _strong('croissant', 0.6)]), ['Croissant']);
+    });
+
+    test('synonyms give one suggestion', () {
+      expect(_labels([_strong('cake', 0.5), _strong('birthday_cake', 0.7), _strong('cupcake', 0.4)]), ['Cake']);
+      expect(_labels([_strong('oranges', 0.5), _strong('mandarine', 0.6)]), ['Orange']);
+      expect(_labels([_strong('dumpling', 0.5), _strong('gyoza', 0.6), _strong('wonton', 0.4)]), ['Dumplings']);
+    });
+
+    test('at most three, highest score first — a photo is not an ingredient list', () {
+      expect(
+        _labels([
+          _strong('banana', 0.5),
+          _strong('apple', 0.9),
+          _strong('mango', 0.7),
+          _strong('grape', 0.6),
+          _strong('pineapple', 0.3),
+        ]),
+        ['Apple', 'Mango', 'Grapes'],
+      );
+    });
+
+    test('nothing food-like gives nothing', () {
+      expect(PhotoFoodMapper.suggestions([_strong('cat', 0.9), _strong('sofa', 0.8)]), isEmpty);
+    });
   });
 
-  test('a plate of tuna and rice', () {
-    final items = PhotoFoodMapper.foods([
-      (label: 'food', confidence: 0.95),
-      (label: 'rice', confidence: 0.82),
-      (label: 'grain', confidence: 0.7),
-      (label: 'tuna', confidence: 0.41),
-      (label: 'fish', confidence: 0.55),
-      (label: 'plate', confidence: 0.6),
-    ]);
-    expect(items.map((i) => i.name), ['White rice, cooked', 'Tuna flakes in oil, canned']);
-    expect(items.first.confidence, 0.82);
-    expect(items.last.confidence, 0.41);
-    expect(items.last.isLowConfidence, isTrue, reason: 'shown with “check this”');
+  group('the mapping table', () {
+    test('every direct match is a food in Nutriq’s list', () {
+      for (final MapEntry(key: label, value: m) in PhotoFoodMapper.mappings.entries) {
+        if (m.food != null) expect(FoodCatalog.byAlias(m.food!), isNotNull, reason: label);
+      }
+    });
+
+    test('every search finds at least one food, so “Find” is never empty', () {
+      for (final MapEntry(key: label, value: m) in PhotoFoodMapper.mappings.entries) {
+        expect(FoodCatalog.search(m.search), isNotEmpty, reason: '$label → “${m.search}”');
+      }
+    });
   });
 
-  test('a general label stays when nothing more specific was seen', () {
-    expect(_names([(label: 'rice', confidence: 0.8), (label: 'fish', confidence: 0.6)]), [
-      'White rice, cooked',
-      'Tilapia, fried',
-    ]);
-  });
+  group('saved with the scan draft', () {
+    test('suggestions round-trip through JSON', () {
+      final draft = ScanDraft(
+        id: 'd',
+        photoPath: 'p.jpg',
+        createdAt: DateTime(2026, 10, 7),
+        status: DraftStatus.ready,
+        suggestions: PhotoFoodMapper.suggestions([_strong('fried_egg', 0.6), _strong('tuna', 0.5)]),
+      );
+      final back = ScanDraft.fromJson(draft.toJson());
+      expect(back.suggestions.map((s) => s.label), ['Fried egg', 'Tuna']);
+      expect(back.suggestions.first.food?.name, 'Egg, fried');
+      expect(back.suggestions.last.food, isNull);
+      expect(back.suggestions.last.searchTerm, 'tuna');
+    });
 
-  test('a specific label replaces its general one', () {
-    expect(_names([(label: 'egg', confidence: 0.7), (label: 'fried_egg', confidence: 0.5)]), ['Egg, fried']);
-    expect(_names([(label: 'pasta', confidence: 0.7), (label: 'spaghetti', confidence: 0.6)]), [
-      'Spaghetti with meat sauce',
-    ]);
-  });
-
-  test('weak guesses are left out', () {
-    expect(_names([(label: 'rice', confidence: 0.8), (label: 'sushi', confidence: 0.1)]), ['White rice, cooked']);
-  });
-
-  test('two labels for the same food give one food', () {
-    final items = PhotoFoodMapper.foods([(label: 'cake', confidence: 0.5), (label: 'birthday_cake', confidence: 0.7)]);
-    expect(items, hasLength(1));
-    expect(items.single.confidence, 0.7);
-  });
-
-  test('at most five foods, most confident first', () {
-    final names = _names([
-      (label: 'rice', confidence: 0.3),
-      (label: 'banana', confidence: 0.9),
-      (label: 'apple', confidence: 0.8),
-      (label: 'coffee', confidence: 0.7),
-      (label: 'bread', confidence: 0.6),
-      (label: 'egg', confidence: 0.5),
-      (label: 'salad', confidence: 0.4),
-    ]);
-    expect(names, hasLength(5));
-    expect(names.first, 'Banana');
-    expect(names, isNot(contains('White rice, cooked')));
-  });
-
-  test('a photo with no food gives nothing', () {
-    expect(
-      _names([(label: 'cat', confidence: 0.9), (label: 'sofa', confidence: 0.6), (label: 'food', confidence: 0.3)]),
-      isEmpty,
-    );
+    test('drafts saved before suggestions existed still load', () {
+      final old = ScanDraft(id: 'd', photoPath: 'p.jpg', createdAt: DateTime(2026), status: DraftStatus.ready).toJson()
+        ..remove('suggestions');
+      expect(ScanDraft.fromJson(old).suggestions, isEmpty);
+    });
   });
 }

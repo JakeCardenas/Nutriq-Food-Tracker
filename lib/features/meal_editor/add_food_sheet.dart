@@ -9,16 +9,21 @@ import '../../domain/models/food_item.dart';
 import '../../widgets/pressable.dart';
 import '../../widgets/sheet.dart';
 import 'food_item_form.dart';
+import 'serving_sheet.dart';
 
 /// Add a food: pick from My foods / recent foods / Nutriq's food list, or enter it manually.
-Future<FoodItem?> showAddFoodSheet(BuildContext context, {bool startManual = false}) {
-  return showNqSheetWith<FoodItem>(context, builder: (context) => _AddFoodSheet(startManual: startManual));
+Future<FoodItem?> showAddFoodSheet(BuildContext context, {bool startManual = false, String initialQuery = ''}) {
+  return showNqSheetWith<FoodItem>(
+    context,
+    builder: (context) => _AddFoodSheet(startManual: startManual, initialQuery: initialQuery),
+  );
 }
 
 class _AddFoodSheet extends StatefulWidget {
-  const _AddFoodSheet({required this.startManual});
+  const _AddFoodSheet({required this.startManual, required this.initialQuery});
 
   final bool startManual;
+  final String initialQuery;
 
   @override
   State<_AddFoodSheet> createState() => _AddFoodSheetState();
@@ -26,7 +31,14 @@ class _AddFoodSheet extends StatefulWidget {
 
 class _AddFoodSheetState extends State<_AddFoodSheet> {
   late bool _manual = widget.startManual;
-  String _query = '';
+  late String _query = widget.initialQuery;
+  late final _search = TextEditingController(text: widget.initialQuery);
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +58,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     final shown = {...savedNames, for (final f in recent) f.name.toLowerCase()};
     final catalog = [
       for (final food in FoodCatalog.search(q, limit: 12))
-        if (!shown.contains(food.name.toLowerCase())) food.item(),
+        if (!shown.contains(food.name.toLowerCase())) food,
     ];
 
     return SizedBox(
@@ -64,6 +76,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                   const Text('Add an ingredient', style: NqText.title),
                   const SizedBox(height: NqSpace.md),
                   TextField(
+                    controller: _search,
                     decoration: const InputDecoration(
                       hintText: 'Search foods',
                       prefixIcon: Icon(Icons.search_rounded, color: NqColors.textTertiary),
@@ -89,7 +102,8 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                   ],
                   if (catalog.isNotEmpty) ...[
                     _header('Food list'),
-                    for (final f in catalog) _FoodPick(item: f, onTap: () => _pick(f)),
+                    for (final f in catalog)
+                      _FoodPick(item: f.item(), suggestedServing: true, onTap: () => _pickCatalog(f)),
                   ],
                   if (saved.isEmpty && recent.isEmpty && catalog.isEmpty)
                     Padding(
@@ -112,6 +126,12 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   }
 
   void _pick(FoodItem f) => Navigator.pop(context, f.copyWith(id: newId()));
+
+  /// Foods from Nutriq's list start at a suggested serving the person confirms.
+  Future<void> _pickCatalog(CatalogFood food) async {
+    final item = await showServingSheet(context, food);
+    if (item != null && mounted) Navigator.pop(context, item);
+  }
 
   Widget _header(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(4, NqSpace.xl, 4, NqSpace.sm),
@@ -144,10 +164,13 @@ class _ManualRow extends StatelessWidget {
 }
 
 class _FoodPick extends StatelessWidget {
-  const _FoodPick({required this.item, required this.onTap});
+  const _FoodPick({required this.item, required this.onTap, this.suggestedServing = false});
 
   final FoodItem item;
   final VoidCallback onTap;
+
+  /// From Nutriq's list: the amount is only a starting point chosen in the next step.
+  final bool suggestedServing;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -162,11 +185,16 @@ class _FoodPick extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.name, style: NqText.body),
-                Text('${fmtAmount(item.servings)} × ${item.servingLabel}', style: NqText.footnote),
+                Text(
+                  suggestedServing
+                      ? 'Suggested serving: ${item.servingLabel}'
+                      : '${fmtAmount(item.servings)} × ${item.servingLabel}',
+                  style: NqText.footnote,
+                ),
               ],
             ),
           ),
-          Text('${fmtKcal(item.totals.calories)} kcal', style: NqText.numberSmall),
+          Text('${suggestedServing ? '≈' : ''}${fmtKcal(item.totals.calories)} kcal', style: NqText.numberSmall),
           const SizedBox(width: 8),
           const Icon(Icons.add_circle_rounded, color: NqColors.ink, size: 24),
         ],

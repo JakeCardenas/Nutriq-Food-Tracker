@@ -46,6 +46,7 @@ dependencies:
   health: ^13.3.2
   camera: ^0.12.1
   shared_preferences: ^2.5.6
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:

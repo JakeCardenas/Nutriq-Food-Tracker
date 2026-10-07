@@ -11,6 +11,10 @@ class FakeHealthService implements HealthService {
   bool throwOnRequest = false;
   HealthSnapshot snapshot = const HealthSnapshot();
   final written = <String>[];
+
+  /// Meals whose samples were deleted, with the time they were deleted at.
+  final deleted = <(String, DateTime)>[];
+  bool deleteSucceeds = true;
   int readRequests = 0;
   int writeRequests = 0;
 
@@ -33,6 +37,13 @@ class FakeHealthService implements HealthService {
   @override
   Future<bool> writeMeal(Meal meal) async {
     written.add(meal.id);
+    return true;
+  }
+
+  @override
+  Future<bool> deleteMeal(Meal meal) async {
+    if (!deleteSucceeds) return false;
+    deleted.add((meal.id, meal.loggedAt));
     return true;
   }
 }

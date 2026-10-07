@@ -5,10 +5,11 @@ import 'package:flutter/services.dart';
 import '../../domain/photo_food_mapper.dart';
 import 'food_analysis_service.dart';
 
-/// Recognises food with the iPhone's built-in image classifier (Apple
-/// Vision), on the device: the photo never leaves the phone and nothing is
-/// paid for. It sees what kinds of food are in a photo, not brands or
-/// amounts — the review asks the person to check portions.
+/// Suggests foods with the iPhone's built-in, general-purpose image
+/// classifier (Apple Vision), on the device: the photo never leaves the phone
+/// and nothing is paid for. Vision isn't a food model and can be wrong, so
+/// the result is only a few suggestions — no foods, no portions. The person
+/// picks what they ate and chooses each serving.
 class OnDeviceFoodAnalysisService implements FoodAnalysisService {
   OnDeviceFoodAnalysisService({MethodChannel? channel})
     : _channel = channel ?? const MethodChannel('com.prodbyjake.nutriq/food_vision');
@@ -22,7 +23,7 @@ class OnDeviceFoodAnalysisService implements FoodAnalysisService {
   bool get recognizesPhotos => true;
 
   @override
-  String get label => 'On this iPhone';
+  String get label => 'Suggestions on this iPhone';
 
   @override
   Future<FoodAnalysisResult> analyze(Uint8List imageBytes) async {
@@ -41,8 +42,8 @@ class OnDeviceFoodAnalysisService implements FoodAnalysisService {
     final labels = <VisionLabel>[
       for (final r in raw ?? const [])
         if (r case {'label': final String label, 'confidence': final num confidence})
-          (label: label, confidence: confidence.toDouble()),
+          (label: label, confidence: confidence.toDouble(), meetsPrecision: r['meetsPrecision'] == true),
     ];
-    return FoodAnalysisResult(items: PhotoFoodMapper.foods(labels), isDemo: false);
+    return FoodAnalysisResult(items: const [], suggestions: PhotoFoodMapper.suggestions(labels), isDemo: false);
   }
 }
